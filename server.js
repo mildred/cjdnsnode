@@ -305,18 +305,35 @@ const setupWalker = (ctx) => {
 
 const connectOut = (ctx) => {
     Config.connectTo.forEach((x) => {
+        let sock;
+        let tolm = now();
         const again = () => {
             const data = {d:''};
-            const sock = Net.connect(x, () => {
+            const s = sock = Net.connect(x, () => { });
+            s.on('data', (dat) => {
+                if (s !== sock) { s.end(); return; }
+                tolm = now();
+                onData(ctx, data, dat, { write: (x) => console.log(x) });
             });
-            sock.on('data', (dat) => onData(ctx, data, dat, { write: (x) => console.log(x) }));
-            sock.on('end', () => {
+            s.on('end', () => {
+                if (s !== sock) { return; }
                 console.log("connection " + JSON.stringify(x) + " lost");
-                setTimeout(again, RECONNECT_CYCLE);
+                sock = null;
             });
-            sock.on('error', () => { sock.end(); });
+            s.on('error', () => {
+                if (s !== sock) { s.end(); return; }
+                sock.end();
+                sock = null;
+            });
         };
         again();
+        setTimeout(() {
+            if (now() - tolm > RECONNECT_CYCLE) {
+                sock.end();
+                sock = null;
+            }
+            if (!sock) { again(); }
+        }, RECONNECT_CYCLE);
     });
 };
 
