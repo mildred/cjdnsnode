@@ -314,6 +314,7 @@ const connectOut = (ctx) => {
                 console.log("connection " + JSON.stringify(x) + " lost");
                 setTimeout(again, RECONNECT_CYCLE);
             });
+            sock.on('error', () => { sock.end(); });
         };
         again();
     });
