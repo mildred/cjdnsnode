@@ -1,0 +1,11 @@
+{
+    "name": "cjdnsnode",
+    "version": "0.0.0",
+    "dependencies": {
+        "node-dijkstra": "~2.2.0",
+        "bencode": "~0.7.0",
+        "saferphore": "~0.0.0",
+        "cjdnsadmin": "~0.0.0",
+        "nthen": "~0.1.1"
+    }
+}

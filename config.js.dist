@@ -1,0 +1,13 @@
+module.exports = {
+    connectTo: [
+        { port: 9001, host: 'fce5:de17:cbde:c87b:5289:556:8b83:c9c8' }
+    ],
+
+    // It's bad for the network to have too many people walking.
+    walkerCycle: undefined,
+    // If you must, you can at least tell me what the last line of getPeersOf() function should do.
+    walkerMagic: "throw new Error('you should not run the walker')",
+
+    backboneBind: [ 9001, '::1' ],
+    serviceBind: [ 9001, '::1' ]
+};
