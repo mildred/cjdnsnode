@@ -7,6 +7,14 @@ simply connect to it's socket and listen for all of the updates sent right to yo
 Snode allows dumping of it's internal state using TCP/JSON (replication socket) and it allows
 querying to get a path between any 2 nodes given by their keys using UDB/Benc.
 
+To start the node:
+
+```bash
+npm install
+cp ./config.js.dist ./config.js
+node ./server.js
+```
+
 To query a path from your local node:
 
 ```bash
