@@ -19,12 +19,14 @@ const Net = require('net');
 const Udp = require('dgram');
 const Dijkstra = require('node-dijkstra');
 const Bencode = require('bencode');
-const Cjdnsplice = require('./cjdnsplice');
+const Cjdnsplice = require('cjdnsplice');
 const Walker = require('./walker');
+const Cjdnskeys = require('cjdnskeys');
 let Config = require('./config');
 
 const FLUSH_STATE_CYCLE = 30000;
-const RECONNECT_CYCLE = 10000;
+const RECONNECT_CHECK_CYCLE = 10000;
+const RECONNECT_CYCLE = 250000;
 
 const now = () => new Date().getTime();
 
@@ -49,8 +51,9 @@ const buildGraph = (ctx) => {
 };
 
 const getRoute = (ctx, src, dst) => {
+    if (!src || !dst) { return null; }
     buildGraph(ctx);
-    const path = ctx.mut.dijkstra.path(src, dst);
+    const path = ctx.mut.dijkstra.path(src.key, dst.key);
     if (!path) { return null; }
     let last;
     const labelPath = [];
@@ -150,6 +153,7 @@ const handleMessage = (ctx, client, msgStr) => {
             //console.log('new node ' + JSON.stringify(node));
         }
         ctx.nodes[node.key] = node;
+        ctx.ipnodes[Cjdnskeys.publicToIp6(node.key)] = node;
         ctx.mut.dijkstra = undefined;
         bcast(ctx, msg);
 
@@ -231,7 +235,9 @@ const service = (ctx) => {
             const route = { txid: data.txid };
             if ('q' in data && data.q === 'gr') {
                 console.log(data);
-                const r = getRoute(ctx, data.src, data.tar);
+                const src = ctx.ipnodes[data.src];
+                const tar = ctx.ipnodes[data.tar];
+                const r = getRoute(ctx, src, tar);
                 if (r) {
                     route.label = r.label;
                 } else {
@@ -310,6 +316,10 @@ const connectOut = (ctx) => {
         const again = () => {
             const data = {d:''};
             const s = sock = Net.connect(x, () => { });
+            s.on('connect', () => {
+                console.log("connected " + JSON.stringify(x) + ' localPort ' + s.localPort);
+                tolm = now();
+            });
             s.on('data', (dat) => {
                 if (s !== sock) { s.end(); return; }
                 tolm = now();
@@ -327,13 +337,14 @@ const connectOut = (ctx) => {
             });
         };
         again();
-        setTimeout(() {
-            if (now() - tolm > RECONNECT_CYCLE) {
-                sock.end();
+        setInterval(() => {
+            if (sock && now() - tolm > RECONNECT_CYCLE) {
+                console.log('no data in ' + RECONNECT_CYCLE + 'ms reconnecting');
+                if (sock) { sock.end(); }
                 sock = null;
+                again();
             }
-            if (!sock) { again(); }
-        }, RECONNECT_CYCLE);
+        }, RECONNECT_CHECK_CYCLE);
     });
 };
 
@@ -343,6 +354,7 @@ const main = () => {
 
     let ctx = Object.freeze({
         nodes: {},
+        ipnodes: {},
         clients: [],
         mut: {
             dijkstra: undefined

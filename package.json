@@ -6,6 +6,8 @@
         "bencode": "~0.7.0",
         "saferphore": "~0.0.0",
         "cjdnsadmin": "~0.0.0",
-        "nthen": "~0.1.1"
+        "nthen": "~0.1.1",
+        "cjdnskeys": "~0.0.0",
+        "cjdnsplice": "~0.0.0"
     }
 }

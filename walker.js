@@ -16,7 +16,7 @@
  */
 var Cjdns = require('cjdnsadmin');
 var Saferphore = require('saferphore');
-var Cjdnsplice = require('./cjdnsplice');
+var Cjdnsplice = require('cjdnsplice');
 var nThen = require('nthen');
 
 var getPeers = function (ctx, nodeName, near, cb) {
