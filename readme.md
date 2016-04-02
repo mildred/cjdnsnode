@@ -18,5 +18,5 @@ node ./server.js
 To query a path from your local node:
 
 ```bash
-echo -n 'd1:q2:gr3:src54:3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k4:tar54:1220u65349nljc5fwy1tyvm0j24bwgcj75rx09ukvd94vhg858b0.k4:txid4:abcde' | nc -u ::1 9001
+echo -n 'd1:q2:gr3:src54:3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k3:tar54:1220u65349nljc5fwy1tyvm0j24bwgcj75rx09ukvd94vhg858b0.k4:txid4:abcde' | nc -u ::1 9001
 ```
