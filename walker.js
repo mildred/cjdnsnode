@@ -21,8 +21,10 @@ var nThen = require('nthen');
 
 var getPeers = function (ctx, nodeName, near, cb) {
     ctx.sem.take(function (returnAfter) {
+        console.log("getPeers near " + near);
         ctx.cjdns.RouterModule_getPeers(nodeName, 6000, near, returnAfter(function (err, ret) {
             if (err) { throw err; }
+            console.log(JSON.stringify(ret));
             cb(ret);
         }));
     });
@@ -63,14 +65,18 @@ var getPeersOf = function (ctx, nodeName, cb) {
             scheme = ret.encodingScheme;
             peers.push.apply(peers, ret.peers);
             if (ret.peers.length === 8) {
-                again(splitName(ret.peers[7]).label, 0);
+                const nonCannonicalLabel = splitName(ret.peers[7]).label;
+                const cannonicalLabel =
+                    Cjdnsplice.reEncode(nonCannonicalLabel, scheme, Cjdnsplice.FORM_CANNONICAL);
+                again(cannonicalLabel, 0);
             } else {
                 var label = splitName(nodeName).label;
                 var prs = {};
                 peers = peers.map(function (p) {
                     var spl = splitName(p);
                     if (spl.label === '0000.0000.0000.0001') { return null; }
-                    prs[spl.key] = spl.label;
+                    prs[spl.key] =
+                        Cjdnsplice.reEncode(spl.label, scheme, Cjdnsplice.FORM_CANNONICAL);
                     spl.label = Cjdnsplice.splice(spl.label, label);
                     //console.log(spl.label);
                     if (spl.label === 'ffff.ffff.ffff.ffff') { return null; }
@@ -113,22 +119,34 @@ var doWalk = function (ctx, nodeName, cb) {
     });
 };
 
-const walk = module.exports.walk = (magic, nodeUpdateHandler, cb) => {
+const mkCtx = (magic, nodeUpdateHandler, cb) => {
     Cjdns.connectWithAdminInfo(function (cjdns) {
-        var ctx = Object.freeze({
+        cb(Object.freeze({
             nodeUpdateHandler: nodeUpdateHandler || ()=>{},
             cjdns: cjdns,
             sem: Saferphore.create(32),
             nodes: {},
             magic: magic
-        });
-        cjdns.RouterModule_getPeers("0000.0000.0000.0001", function (err, ret) {
+        }));
+    });
+};
+
+const walk = module.exports.walk = (magic, nodeUpdateHandler, cb) => {
+    mkCtx(magic, nodeUpdateHandler, (ctx) => {
+        ctx.cjdns.RouterModule_getPeers("0000.0000.0000.0001", function (err, ret) {
             if (err) { throw err; }
             doWalk(ctx, ret.peers[0], function () {
                 //console.log(JSON.stringify(nodes, null, '  '));
-                cjdns.disconnect();
+                ctx.cjdns.disconnect();
                 cb();
             });
         });
     });
+};
+
+const peersOf = module.exports.peersOf = (magic, nodeName, cb) => {
+    mkCtx(magic, null, (ctx) => (getPeersOf(ctx, nodeName, (err, ret, peers) => {
+        ctx.cjdns.disconnect();
+        cb(err, ret, peers);
+    })));
 };
