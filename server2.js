@@ -408,7 +408,7 @@ const encodingSchemeFromAnnouncement = (ann) => {
 const versionFromAnnouncement = (ann) => {
     const ver = ann.entities.filter((x) => (x.type === 'Version'))[0];
     return ver ? ver.version : undefined;
-}
+};
 
 const AGREED_TIMEOUT_MS = (1000 * 60 * 60 * 20);
 const MAX_CLOCKSKEW_MS = (1000 * 10);
@@ -486,6 +486,7 @@ const buildMsg = (bytes) => {
     return toWrite;
 };
 
+let logMsg;
 const newLog = (ctx) => {
     if (ctx.mut.logStream) {
         ctx.mut.logStream.end();
@@ -493,16 +494,16 @@ const newLog = (ctx) => {
     ctx.mut.logSize = 0;
     ctx.mut.initLogSize = 0;
     ctx.mut.logStream = Fs.createWriteStream(ctx.logPath + '/log_' + (ctx.mut.logCtr++) + '.bin');
-    for (const ip in ctx.nodesByIp) {
+    Object.keys(ctx.nodesByIp).forEach((ip) => {
         const node = ctx.nodesByIp[ip];
         node.mut.announcements.forEach((ann) => {
             logMsg(ctx, buildMsg(ann.binary));
-        })
-    }
+        });
+    });
     ctx.mut.initLogSize = ctx.mut.logSize;
 };
 
-const logMsg = (ctx, bytes) => {
+logMsg = (ctx, bytes) => {
     let i = 0;
     const tryWrite = () => {
         try {
@@ -643,7 +644,7 @@ const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
         ctx.mut.dijkstra = undefined;
     });
 
-    shouldLog && propagateMsg(ctx, ann.binary);
+    if (shouldLog) { propagateMsg(ctx, ann.binary); }
     return { stateHash: nodeAnnouncementHash(node), error: replyError };
 };
 
@@ -825,7 +826,7 @@ const main = () => {
             }
             if (err) { throw err; }
             let newestLog = -1;
-            let newestFile = ''
+            let newestFile = '';
             logFiles.forEach((file) => {
                 const num = Number(file.replace(/.*_([0-9]+)\.bin$/, (all, a) => (a)));
                 if (num > newestLog) {

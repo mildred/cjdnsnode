@@ -26,6 +26,7 @@ const Cjdnskeys = require('cjdnskeys');
 const Cjdnsniff = require('cjdnsniff');
 const Cjdnsadmin = require('cjdnsadmin');
 const Cjdnsann = require('../cjdnsann/index.js');
+const Cjdnsencode = require('cjdnsencode');
 let Config = require('./config');
 
 const FLUSH_STATE_CYCLE = 30000;
@@ -377,9 +378,10 @@ const service = (ctx) => {
             ev.on('message', (msg) => {
                 console.log(msg);
                 if (!ctx.thisNode) {
-                    if (!msg.routeHeader.isIncoming) {
+                    if (!msg.routeHeader.isIncoming && msg.contentBenc.ann) {
                         try {
                             const scheme = Cjdnsencode.parse(msg.contentBenc.es);
+                            const ann = Cjdnsann.parse(msg.contentBenc.ann);
                             const thisNode = ctx.thisNode = Object.freeze({
                                 version: msg.contentBenc.p,
                                 key: msg.routeHeader.publicKey,
@@ -464,7 +466,7 @@ const backbone = (ctx) => {
 const setupWalker = (ctx) => {
     const walkerLog = { write: (msg) => { console.log("walker: " + msg); } };
     const walk = () => {
-        return; // TODO
+        /* TODO
         console.log("beginning network walk");
         Walker.walk(Config.walkerMagic, (lines) => {
             const nodeLine = lines.shift();
@@ -484,7 +486,7 @@ const setupWalker = (ctx) => {
             lines.forEach((l) => (handleMessage(ctx, walkerLog, l)));
         }, () => {
             setTimeout(walk, Config.walkerCycle);
-        });
+        });*/
     };
     walk();
 };
