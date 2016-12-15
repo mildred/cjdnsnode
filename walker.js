@@ -92,7 +92,7 @@ var getPeersOf = function (ctx, nodeName, cb) {
             }
         });
     };
-    eval(ctx.magic);
+    eval(ctx.magic); // jshint ignore:line
 };
 
 const now = () => (new Date().getTime());

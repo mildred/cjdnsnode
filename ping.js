@@ -37,7 +37,7 @@ const pingNode = (cjdns, pingSem, addr, attempt, cb) => {
                     console.log(addr + ' TIMEOUT ' + ret.ms + 'ms');
                     cb();
                 }
-                return
+                return;
             }
             cb();
             if (ret.result !== 'pong') { console.log(ret); return; }
@@ -72,7 +72,7 @@ const run = (dat, verbose) => {
                 let attempts = 0;
                 let send = () => {
                     if (attempts++ > 6) { throw new Error("snode unavailable"); }
-                    usock.send(buff, 0, buff.length, 9001, '::1')
+                    usock.send(buff, 0, buff.length, 9001, '::1');
                 };
                 send();
                 let inter = setInterval(send, 5000);

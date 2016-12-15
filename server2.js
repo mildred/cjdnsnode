@@ -44,7 +44,7 @@ const dropClient = (ctx, c) => {
     if (ctx.clients.indexOf(c) >= 0) {
         ctx.clients.splice(ctx.clients.indexOf(c), 1);
     }
-    try { c.end() } catch (e) { }
+    try { c.end(); } catch (e) { }
 };
 
 const sendTo = (ctx, c, str) => {
@@ -191,9 +191,9 @@ const onData = (ctx, data, dat, c) => {
     }
 };
 const setupWalker = (ctx) => {
-    const walkerLog = { write: (msg) => { console.log("walker: " + msg) } };
+    const walkerLog = { write: (msg) => { console.log("walker: " + msg); } };
     const walk = () => {
-        return; // TODO
+        return; /* TODO
         console.log("beginning network walk");
         Walker.walk(Config.walkerMagic, (lines) => {
             const nodeLine = lines.shift();
@@ -213,7 +213,7 @@ const setupWalker = (ctx) => {
             lines.forEach((l) => (handleMessage(ctx, walkerLog, l)));
         }, () => {
             setTimeout(walk, Config.walkerCycle);
-        });
+        }); */
     };
     walk();
 };
@@ -256,7 +256,8 @@ const connectOut = (ctx) => {
         let tolm = now();
         const again = () => {
             const data = {d:''};
-            const s = sock = Net.connect(x, () => { });
+            const s = Net.connect(x, () => { });
+            sock = s;
             s.on('connect', () => {
                 console.log("connected " + JSON.stringify(x) + ' localPort ' + s.localPort);
                 tolm = now();
@@ -324,7 +325,7 @@ const mkLink = (annPeer, ann) => {
         flags: annPeer.flags,
         time: Number('0x' + ann.timestamp)
     });
-}
+};
 
 const linkValue = (link) => {
     return 1;
@@ -473,7 +474,6 @@ const logMsg = (ctx, bytes) => {
     let i = 0;
     const tryWrite = () => {
         try {
-            ctx.log.write(header);
             ctx.log.write(bytes);
         } catch (e) {
             if (i++ > 10) {
@@ -638,7 +638,7 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
     } else {
         console.log(msg.contentBenc);
     }
-}
+};
 
 const service = (ctx) => {
     let cjdns;

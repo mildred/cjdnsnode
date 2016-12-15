@@ -80,7 +80,7 @@ const dropClient = (ctx, c) => {
     if (ctx.clients.indexOf(c) >= 0) {
         ctx.clients.splice(ctx.clients.indexOf(c), 1);
     }
-    try { c.end() } catch (e) { }
+    try { c.end(); } catch (e) { }
 };
 
 const sendTo = (ctx, c, str) => {
@@ -283,7 +283,7 @@ const backbone = (ctx) => {
 };
 
 const setupWalker = (ctx) => {
-    const walkerLog = { write: (msg) => { console.log("walker: " + msg) } };
+    const walkerLog = { write: (msg) => { console.log("walker: " + msg); } };
     const walk = () => {
         console.log("beginning network walk");
         Walker.walk(Config.walkerMagic, (lines) => {
@@ -315,7 +315,8 @@ const connectOut = (ctx) => {
         let tolm = now();
         const again = () => {
             const data = {d:''};
-            const s = sock = Net.connect(x, () => { });
+            const s = Net.connect(x, () => { });
+            sock = s;
             s.on('connect', () => {
                 console.log("connected " + JSON.stringify(x) + ' localPort ' + s.localPort);
                 tolm = now();
