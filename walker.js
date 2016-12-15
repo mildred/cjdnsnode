@@ -21,7 +21,7 @@ var nThen = require('nthen');
 
 var getPeers = function (ctx, nodeName, near, cb) {
     ctx.sem.take(function (returnAfter) {
-        console.log("getPeers near " + near);
+        console.log("getPeers " + nodeName + " near " + near);
         ctx.cjdns.RouterModule_getPeers(nodeName, 6000, near, returnAfter(function (err, ret) {
             if (err) { throw err; }
             console.log(JSON.stringify(ret));
@@ -122,7 +122,7 @@ var doWalk = function (ctx, nodeName, cb) {
 const mkCtx = (magic, nodeUpdateHandler, cb) => {
     Cjdns.connectWithAdminInfo(function (cjdns) {
         cb(Object.freeze({
-            nodeUpdateHandler: nodeUpdateHandler || ()=>{},
+            nodeUpdateHandler: nodeUpdateHandler || function () { },
             cjdns: cjdns,
             sem: Saferphore.create(32),
             nodes: {},

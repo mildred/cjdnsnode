@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 'use strict';
+const Fs = require('fs');
 const Net = require('net');
 const Udp = require('dgram');
 const Crypto = require('crypto');
@@ -295,7 +296,8 @@ const connectOut = (ctx) => {
 
 
 
-
+// When the size of the log is 1MB plus the size of the initial data set, move to a new log file.
+const MAX_LOG_GROWTH = 1000000000;
 
 
 
@@ -303,10 +305,12 @@ const connectOut = (ctx) => {
 // DONE
 // test dijkstra
 // 10 minute expiration
-
-// TODO
 // statefullness
 // fix encodingFormNum
+// send versions in announcement
+
+
+// TODO
 // re-enable walking...
 // bootstrapping on subnode
 
@@ -382,25 +386,28 @@ const getRoute = (ctx, src, dst) => {
 
 const nodeAnnouncementHash = (node) => {
     let carry = new Buffer(64).fill(0);
-    for (let i = node.mut.announcements.length - 1; i >= 0; i--) {
-        const hash = Crypto.createHash('sha512').update(carry);
-        carry = hash.update(node.mut.announcements[i].binary).digest();
+    if (node) {
+        for (let i = node.mut.announcements.length - 1; i >= 0; i--) {
+            const hash = Crypto.createHash('sha512').update(carry);
+            carry = hash.update(node.mut.announcements[i].binary).digest();
+        }
     }
     return carry;
 };
 
-const replyAnnounce = (ctx, msg, node, cjdnslink, replyError) => {
-    const hash = nodeAnnouncementHash(node);
-    const responseBenc = {
-        txid: msg.contentBenc.txid,
-        p: 18,
-        stateHash: hash,
-        recvTime: +new Date()
-    };
-    msg.contentBenc = responseBenc;
-    console.log("reply: " + hash.toString('hex'));
-    cjdnslink.send(msg);
+const peersFromAnnouncement = (ann) => {
+    return ann.entities.filter((x) => (x.type === 'Peer'));
 };
+
+const encodingSchemeFromAnnouncement = (ann) => {
+    const scheme = ann.entities.filter((x) => (x.type === 'EncodingScheme'))[0];
+    return scheme ? scheme.scheme : undefined;
+};
+
+const versionFromAnnouncement = (ann) => {
+    const ver = ann.entities.filter((x) => (x.type === 'Version'))[0];
+    return ver ? ver.version : undefined;
+}
 
 const AGREED_TIMEOUT_MS = (1000 * 60 * 60 * 20);
 const MAX_CLOCKSKEW_MS = (1000 * 10);
@@ -415,10 +422,11 @@ const addAnnouncement = (node, ann) => {
     node.mut.announcements.forEach((a) => {
         if (Number('0x' + a.timestamp) < sinceTime) { return; }
         let safe = false;
-        for (let i = 0; i < a.peers.length; i++) {
-            if (peersAnnounced[a.peers[i].ipv6]) { continue; }
+        const peers = peersFromAnnouncement(a);
+        for (let i = 0; i < peers.length; i++) {
+            if (peersAnnounced[peers[i].ipv6]) { continue; }
             safe = true;
-            peersAnnounced[a.peers[i].ipv6] = true;
+            peersAnnounced[peers[i].ipv6] = true;
         }
         if (safe) { newAnnounce.push(a); }
     });
@@ -469,40 +477,66 @@ const addNode = (ctx, node, overwrite) => {
     return node;
 };
 
+const buildMsg = (bytes) => {
+    const toWrite = new Buffer(8 + bytes.length);
+    toWrite.writeUInt32BE(0x5f3759df, 0);
+    toWrite.writeUInt32BE(bytes.length, 4);
+    bytes.copy(toWrite, 8);
+    return toWrite;
+};
+
+const newLog = (ctx) => {
+    if (ctx.mut.logStream) {
+        ctx.mut.logStream.end();
+    }
+    ctx.mut.logSize = 0;
+    ctx.mut.initLogSize = 0;
+    ctx.mut.logStream = Fs.createWriteStream(ctx.logPath + '/log_' + (ctx.mut.logCtr++) + '.bin');
+    for (const ip in ctx.nodesByIp) {
+        const node = ctx.nodesByIp[ip];
+        node.mut.announcements.forEach((ann) => {
+            logMsg(ctx, buildMsg(ann.binary));
+        })
+    }
+    ctx.mut.initLogSize = ctx.mut.logSize;
+};
+
 const logMsg = (ctx, bytes) => {
     let i = 0;
     const tryWrite = () => {
         try {
-            ctx.log.write(header);
-            ctx.log.write(bytes);
+            ctx.mut.logStream.write(bytes);
+            ctx.mut.logSize += bytes;
         } catch (e) {
             if (i++ > 10) {
                 throw e;
             } else {
-                console.log("failed write, trying again...");
-                setTimeout(tryWrite, 2000);
+                console.log("failed write, trying again in 2 seconds");
+                setTimeout(() => {
+                    tryWrite(bytes, true);
+                }, 2000);
             }
+            return;
+        }
+        if (ctx.mut.logSize - ctx.mut.initLogSize > MAX_LOG_GROWTH) {
+            newLog(ctx);
         }
     };
     tryWrite();
 };
 
 const propagateMsg = (ctx, bytes) => {
-    const toWrite = new Buffer(8 + bytes.length);
-    toWrite.writeUInt32BE(0x5f3759df, 0);
-    toWrite.writeUInt32BE(bytes.length, 4);
-    bytes.copy(toWrite, 8);
+    const toWrite = buildMsg(bytes);
     logMsg(ctx, toWrite);
 };
 
-const handleAnnounce = (ctx, msg, fromNode, cjdnslink) => {
-    //console.log(msg.contentBenc);
-    //console.log(msg.contentBenc.ann.toString('hex'));
+const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
     let ann;
-    let replyError;
-    console.log("ann:" + Crypto.createHash('sha512').update(msg.contentBenc.ann).digest('hex'));
+    let replyError = 'none';
+    console.log("ann: " + annBin.toString('hex'));
+    console.log("ann:" + Crypto.createHash('sha512').update(annBin).digest('hex'));
     try {
-        ann = Cjdnsann.parse(msg.contentBenc.ann);
+        ann = Cjdnsann.parse(annBin);
     } catch (e) {
         console.log("bad announcement [" + e.message + "]");
         replyError = "failed_parse_or_validate";
@@ -522,7 +556,7 @@ const handleAnnounce = (ctx, msg, fromNode, cjdnslink) => {
     let maxClockSkew;
     if (fromNode) {
         maxClockSkew = MAX_CLOCKSKEW_MS;
-        if (ann.snodeIp !== ctx.mut.selfNode.ipv6) {
+        if (ann && ann.snodeIp !== ctx.mut.selfNode.ipv6) {
             console.log("announcement meant for other snode");
             replyError = "wrong_snode";
             ann = undefined;
@@ -530,18 +564,17 @@ const handleAnnounce = (ctx, msg, fromNode, cjdnslink) => {
     } else {
         maxClockSkew = MAX_GLOBAL_CLOCKSKEW_MS;
     }
-    if (ann && Math.abs(new Date() - Number('0x' + ann.timestamp)) > MAX_CLOCKSKEW_MS) {
+    if (ann && Math.abs(new Date() - Number('0x' + ann.timestamp)) > maxClockSkew) {
         console.log("unacceptably large clock skew " +
             (new Date() - Number('0x' + ann.timestamp)));
         replyError = "excessive_clock_skew";
         ann = undefined;
-    } else {
+    } else if (ann) {
         console.log("clock skew " + (new Date() - Number('0x' + ann.timestamp)));
     }
 
     let scheme;
-    if (ann && ann.encodingScheme) {
-        scheme = ann.encodingScheme.scheme;
+    if (ann && (scheme = encodingSchemeFromAnnouncement(ann))) {
     } else if (node) {
         scheme = node.encodingScheme;
     } else if (ann) {
@@ -550,14 +583,22 @@ const handleAnnounce = (ctx, msg, fromNode, cjdnslink) => {
         ann = undefined;
     }
 
+    let version;
+    if (ann && (version = versionFromAnnouncement(ann))) {
+    } else if (node) {
+        version = node.version;
+    } else if (ann) {
+        console.log("no version");
+        replyError = "no_version";
+        ann = undefined;
+    }
+
     if (!ann) {
-        node = node || { mut: { announcements: [ ] } };
-        replyAnnounce(ctx, msg, node, cjdnslink, replyError);
-        return;
+        return { stateHash: nodeAnnouncementHash(node), debug: replyError };
     }
 
     const nodex = mkNode(ctx, {
-        version: msg.contentBenc.p,
+        version: version,
         key: ann.nodePubKey,
         encodingScheme: scheme,
         timestamp: ann.timestamp,
@@ -566,8 +607,7 @@ const handleAnnounce = (ctx, msg, fromNode, cjdnslink) => {
     if (node) {
         if (node.mut.timestamp > ann.timestamp) {
             console.log("old announcement, drop");
-            replyAnnounce(ctx, msg, node, cjdnslink);
-            return;
+            return { stateHash: nodeAnnouncementHash(node), debug: replyError };
         } else if (node.version !== nodex.version) {
             console.log("version change, replacing node");
             node = addNode(ctx, nodex, true);
@@ -584,7 +624,7 @@ const handleAnnounce = (ctx, msg, fromNode, cjdnslink) => {
         node = addNode(ctx, nodex, false);
     }
 
-    ann.peers.forEach((peer) => {
+    peersFromAnnouncement(ann).forEach((peer) => {
         const ipv6 = peer.ipv6;
         if (peer.label === '0000.0000.0000.0000' && node.inwardLinksByIp[ipv6]) {
             delete node.inwardLinksByIp[ipv6];
@@ -602,8 +642,8 @@ const handleAnnounce = (ctx, msg, fromNode, cjdnslink) => {
         ctx.mut.dijkstra = undefined;
     });
 
-    propagateMsg(ctx, ann.binary);
-    replyAnnounce(ctx, msg, node, cjdnslink);
+    shouldLog && propagateMsg(ctx, ann.binary);
+    return { stateHash: nodeAnnouncementHash(node), error: replyError };
 };
 
 const onSubnodeMessage = (ctx, msg, cjdnslink) => {
@@ -634,7 +674,13 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
         delete msg.contentBenc.tar;
         cjdnslink.send(msg);
     } else if (msg.contentBenc.sq.toString('utf8') === 'ann') {
-        handleAnnounce(ctx, msg, true, cjdnslink);
+        const reply = handleAnnounce(ctx, msg.contentBenc.ann, true, cjdnslink);
+        reply.txid = msg.contentBenc.txid;
+        reply.p = ctx.mut.selfNode.version;
+        reply.recvTime = +new Date();
+        msg.contentBenc = reply;
+        console.log("reply: " + reply.stateHash.toString('hex'));
+        cjdnslink.send(msg);
     } else {
         console.log(msg.contentBenc);
     }
@@ -733,6 +779,17 @@ const keepTableClean = (ctx) => {
     }, KEEP_TABLE_CLEAN_CYCLE);
 };
 
+const handleStoreFile = (ctx, buf, cb) => {
+    let i = 0;
+    while (i < buf.length) {
+        const magic = buf.readUInt32BE(i); i += 4;
+        const len = buf.readUInt32BE(i); i += 4;
+        if (magic !== 0x5f3759df) { throw new Error("bad magic"); }
+        handleAnnounce(ctx, buf.slice(i, i += len), false, false);
+    }
+    cb();
+};
+
 const main = () => {
     const confIdx = process.argv.indexOf('--config');
     if (confIdx > -1) { Config = require(process.argv[confIdx+1]); }
@@ -742,18 +799,58 @@ const main = () => {
         //ipnodes: {},
         nodesByIp: {},
         clients: [],
+
+        logPath: Config.logPath || './datastore',
+
         mut: {
             dijkstra: undefined,
-            selfNode: undefined
+            selfNode: undefined,
+
+            logStream: undefined,
+            initLogSize: 0,
+            logSize: 0,
+            logCtr: 0
         }
     });
 
-    keepTableClean(ctx);
-
-    //if (Config.backboneBind) { backbone(ctx); }
-    if (Config.serviceBind) { service(ctx); }
-    testSrv(ctx);
-    //if (Config.walkerCycle) { setupWalker(ctx); }
-    //if (Config.connectTo.length) { connectOut(ctx); }
+    let newestLogFile;
+    nThen((waitFor) => {
+        Fs.readdir(ctx.logPath, waitFor((err, logFiles) => {
+            if (err && err.code === 'ENOENT') {
+                Fs.mkdir(ctx.logPath, waitFor((err) => {
+                    if (err) { throw err; }
+                }));
+                return;
+            }
+            if (err) { throw err; }
+            let newestLog = -1;
+            let newestFile = ''
+            logFiles.forEach((file) => {
+                const num = Number(file.replace(/.*_([0-9]+)\.bin$/, (all, a) => (a)));
+                if (num > newestLog) {
+                    newestLog = num;
+                    newestFile = file;
+                }
+            });
+            if (newestLog > -1) {
+                newestLogFile = newestFile;
+                ctx.mut.logCtr = newestLog + 1;
+            }
+        }));
+    }).nThen((waitFor) => {
+        if (!newestLogFile) { return; }
+        Fs.readFile(ctx.logPath + '/' + newestLogFile, waitFor((err, ret) => {
+            if (err) { throw err; }
+            handleStoreFile(ctx, ret, waitFor());
+        }));
+    }).nThen((waitFor) => {
+        newLog(ctx);
+        keepTableClean(ctx);
+        //if (Config.backboneBind) { backbone(ctx); }
+        if (Config.serviceBind) { service(ctx); }
+        testSrv(ctx);
+        //if (Config.walkerCycle) { setupWalker(ctx); }
+        //if (Config.connectTo.length) { connectOut(ctx); }
+    });
 };
 main();
