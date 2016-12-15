@@ -1,4 +1,4 @@
-# Cjdnsnode - The cjdns supernode
+# Cjdnsnode - The cjdns supernode [![Build Status](https://travis-ci.org/cjdelisle/cjdnsnode.svg?branch=master)](https://travis-ci.org/cjdelisle/cjdnsnode)
 
 A supernode is a replicating database of node/link information, it's collected by scanning the
 network for peers but PLEASE DON'T ENABLE SCANNING, there is another snode scanning and you can
