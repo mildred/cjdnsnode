@@ -355,6 +355,7 @@ const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
         } else if (ann.isReset) {
             console.log("reset message");
             node = addNode(ctx, nodex, true);
+            console.log(node.announcements.length + ' announcements');
         } else {
             addAnnouncement(node, ann);
         }
@@ -525,13 +526,6 @@ const keepTableClean = (ctx) => {
                 console.log("forgetting node [" + nodeIp + "]");
                 delete ctx.nodesByIp;
                 continue;
-            }
-            for (const peerIp in node.inwardLinksByIp) {
-                console.log("forgetting link [" + nodeIp + "]<-[" + peerIp + "]");
-                const peer = node.inwardLinksByIp[peerIp];
-                if (minTime > peer.time) {
-                    delete node.inwardLinksByIp[peerIp];
-                }
             }
         }
     }, KEEP_TABLE_CLEAN_CYCLE);
