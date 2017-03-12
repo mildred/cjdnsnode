@@ -493,7 +493,7 @@ const testSrv = (ctx) => {
                     const otherNode = ctx.nodesByIp[peerIp];
                     //if (!otherNode) { continue; }
                     outLinks.push([
-                        "link",
+                        otherNode ? "link" : "oldlink",
                         Math.floor(link.time / 1000),
                         "-",
                         node.key,
