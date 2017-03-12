@@ -195,7 +195,7 @@ const mkNode = (ctx, obj) => {
         encodingScheme: encodingScheme,
         inwardLinksByIp: {},
         mut: {
-            timestamp: obj.timstamp,
+            timestamp: obj.timestamp,
             announcements: [ ]
         }
     });
@@ -434,7 +434,7 @@ const service = (ctx) => {
             if (err) { throw err; }
             const parsedName = Cjdnskeys.parseNodeName(ret.myAddr);
             const ipv6 = Cjdnskeys.publicToIp6(parsedName.key);
-            ctx.nodesByIp[ipv6] = ctx.mut.selfNode = mkNode(ctx, {
+            ctx.mut.selfNode = mkNode(ctx, {
                 version: parsedName.v,
                 key: parsedName.key,
                 ipv6: ipv6,
@@ -476,6 +476,34 @@ const testSrv = (ctx) => {
             if (!tar) { res.end("tar not found"); return; }
             const r = getRoute(ctx, src, tar);
             res.end(JSON.stringify(r, null, '  '));
+        } else if (ents[0] === 'walk') {
+            const out = [];
+            const outLinks = [];
+            for (const ip in ctx.nodesByIp) {
+                const node = ctx.nodesByIp[ip];
+                out.push([
+                    "node",
+                    Math.floor(Number('0x' + node.mut.timestamp) / 1000),
+                    "-",
+                    "v" + node.version + ".0000.0000.0000.0001." + node.key,
+                    node.encodingScheme
+                ]);
+                for (const peerIp in node.inwardLinksByIp) {
+                    const link = node.inwardLinksByIp[peerIp];
+                    const otherNode = ctx.nodesByIp[peerIp];
+                    //if (!otherNode) { continue; }
+                    outLinks.push([
+                        "link",
+                        Math.floor(link.time / 1000),
+                        "-",
+                        node.key,
+                        otherNode ? otherNode.key : peerIp,
+                        link.label
+                    ]);
+                }
+            }
+            out.push.apply(out, outLinks);
+            res.end(out.map(JSON.stringify).join('\n'));
         } else {
             //console.log(req.url);
             res.end(req.url);
