@@ -7,6 +7,7 @@
     "cjdnskeys": "~0.1.0",
     "cjdnsniff": "~0.1.0",
     "cjdnsplice": "~0.2.0",
+    "cjdnsann": "~0.1.0",
     "node-dijkstra": "~2.2.0",
     "nthen": "~0.1.1",
     "saferphore": "~0.0.0",

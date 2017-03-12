@@ -25,9 +25,7 @@ const nThen = require('nthen');
 const Cjdnskeys = require('cjdnskeys');
 const Cjdnsniff = require('cjdnsniff');
 const Cjdnsadmin = require('cjdnsadmin');
-const Cjdnsann = require('../cjdnsann/index.js'); // XXX
-
-const NetwalkGrabber = require('./netwalkgrabber.js');
+const Cjdnsann = require('cjdnsann');
 
 // When the size of the log is 1MB plus the size of the initial data set, move to a new log file.
 const MAX_LOG_GROWTH = 1000000000;
@@ -49,7 +47,7 @@ const MAX_LOG_GROWTH = 1000000000;
 // bootstrapping on subnode
 
 
-
+const now = () => (+new Date());
 
 const mkLink = (annPeer, ann) => {
     return Object.freeze({
@@ -81,6 +79,11 @@ const buildGraph = (ctx) => {
 
 const getRoute = (ctx, src, dst) => {
     if (!src || !dst) { return null; }
+
+    if (src === dst) {
+        return { label: '0000.0000.0000.0001', hops: [] };
+    }
+
     buildGraph(ctx);
     // we ask for the path in reverse because we build the graph in reverse.
     // because nodes announce own their reachability instead of announcing reachability of others.
@@ -398,7 +401,8 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
                 Cjdnskeys.keyStringToBytes(tar.key),
                 new Buffer(r.label.replace(/\./g, ''), 'hex')
             ]);
-            msg.contentBenc.np = new Buffer([1, 17]);
+            // TODO this is garbage we are sending the same version every time
+            msg.contentBenc.np = new Buffer([1, 19]);
         } else {
             console.log(">> not found ");
         }
@@ -519,7 +523,7 @@ const handleStoreFile = (ctx, buf, cb) => {
 const main = () => {
     const confIdx = process.argv.indexOf('--config');
     const config = require( (confIdx > -1) ? process.argv[confIdx+1] : './config' );
-    config.datastore = config.datastore || './datastore',
+    config.datastore = config.datastore || './datastore';
 
     let ctx = Object.freeze({
         //nodesByKey: {},
