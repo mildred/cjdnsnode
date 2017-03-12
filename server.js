@@ -355,7 +355,7 @@ const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
         } else if (ann.isReset) {
             console.log("reset message");
             node = addNode(ctx, nodex, true);
-            console.log(node.announcements.length + ' announcements');
+            console.log(node.mut.announcements.length + ' announcements');
         } else {
             addAnnouncement(node, ann);
         }
