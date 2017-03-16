@@ -27,9 +27,6 @@ const Cjdnsniff = require('cjdnsniff');
 const Cjdnsadmin = require('cjdnsadmin');
 const Cjdnsann = require('cjdnsann');
 
-// When the size of the log is 1MB plus the size of the initial data set, move to a new log file.
-const MAX_LOG_GROWTH = 1000000000;
-
 
 
 
@@ -222,50 +219,8 @@ const buildMsg = (bytes) => {
     return toWrite;
 };
 
-let logMsg;
-const newLog = (ctx) => {
-    if (ctx.mut.logStream) {
-        ctx.mut.logStream.end();
-    }
-    ctx.mut.logSize = 0;
-    ctx.mut.initLogSize = 0;
-    ctx.mut.logStream = Fs.createWriteStream(ctx.logPath + '/log_' + (ctx.mut.logCtr++) + '.bin');
-    Object.keys(ctx.nodesByIp).forEach((ip) => {
-        const node = ctx.nodesByIp[ip];
-        node.mut.announcements.forEach((ann) => {
-            logMsg(ctx, buildMsg(ann.binary));
-        });
-    });
-    ctx.mut.initLogSize = ctx.mut.logSize;
-};
-
-logMsg = (ctx, bytes) => {
-    let i = 0;
-    const tryWrite = () => {
-        try {
-            ctx.mut.logStream.write(bytes);
-            ctx.mut.logSize += bytes;
-        } catch (e) {
-            if (i++ > 10) {
-                throw e;
-            } else {
-                console.log("failed write, trying again in 2 seconds");
-                setTimeout(() => {
-                    tryWrite(bytes, true);
-                }, 2000);
-            }
-            return;
-        }
-        if (ctx.mut.logSize - ctx.mut.initLogSize > MAX_LOG_GROWTH) {
-            newLog(ctx);
-        }
-    };
-    tryWrite();
-};
-
 const propagateMsg = (ctx, bytes) => {
-    const toWrite = buildMsg(bytes);
-    logMsg(ctx, toWrite);
+    //const toWrite = buildMsg(bytes);
 };
 
 const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
@@ -421,6 +376,12 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
         msg.contentBenc = reply;
         console.log("reply: " + reply.stateHash.toString('hex'));
         cjdnslink.send(msg);
+    } else if (msg.contentBenc.sq.toString('utf8') === 'pn') {
+        msg.contentBenc.recvTime = now();
+        delete msg.contentBenc.sq;
+        delete msg.contentBenc.src;
+        delete msg.contentBenc.tar;
+        cjdnslink.send(msg);
     } else {
         console.log(msg.contentBenc);
     }
@@ -558,53 +519,12 @@ const main = () => {
 
         mut: {
             dijkstra: undefined,
-            selfNode: undefined,
-
-            logStream: undefined,
-            initLogSize: 0,
-            logSize: 0,
-            logCtr: 0
+            selfNode: undefined
         }
     });
 
-    let newestLogFile;
-    nThen((waitFor) => {
-        Fs.readdir(ctx.logPath, waitFor((err, logFiles) => {
-            if (err && err.code === 'ENOENT') {
-                Fs.mkdir(ctx.logPath, waitFor((err) => {
-                    if (err) { throw err; }
-                }));
-                return;
-            }
-            if (err) { throw err; }
-            let newestLog = -1;
-            let newestFile = '';
-            logFiles.forEach((file) => {
-                const num = Number(file.replace(/.*_([0-9]+)\.bin$/, (all, a) => (a)));
-                if (num > newestLog) {
-                    newestLog = num;
-                    newestFile = file;
-                }
-            });
-            if (newestLog > -1) {
-                newestLogFile = newestFile;
-                ctx.mut.logCtr = newestLog + 1;
-            }
-        }));
-    }).nThen((waitFor) => {
-        if (!newestLogFile) { return; }
-        Fs.readFile(ctx.logPath + '/' + newestLogFile, waitFor((err, ret) => {
-            if (err) { throw err; }
-            handleStoreFile(ctx, ret, waitFor());
-        }));
-    }).nThen((waitFor) => {
-        newLog(ctx);
-        keepTableClean(ctx);
-        //if (Config.backboneBind) { backbone(ctx); }
-        service(ctx);
-        testSrv(ctx);
-        //if (Config.walkerCycle) { setupWalker(ctx); }
-        //if (Config.connectTo.length) { connectOut(ctx); }
-    });
+    keepTableClean(ctx);
+    service(ctx);
+    testSrv(ctx);
 };
 main();
