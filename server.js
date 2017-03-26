@@ -231,7 +231,7 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
     let ann;
     let replyError = 'none';
     const annHash = Crypto.createHash('sha512').update(annBin).digest('hex');
-    console.log("ann: " + annBin.toString('hex'));
+    //console.log("ann: " + annBin.toString('hex'));
     console.log("ann:" + annHash);
     try {
         ann = Cjdnsann.parse(annBin);
@@ -239,8 +239,8 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
         console.log("bad announcement [" + e.message + "]");
         replyError = "failed_parse_or_validate";
     }
-    console.log(ann);
-    console.log(+new Date());
+    //console.log(ann);
+    //console.log(+new Date());
 
     let node;
     if (ann) { node = ctx.nodesByIp[ann.nodeIp]; }
@@ -268,7 +268,7 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
         replyError = "excessive_clock_skew";
         ann = undefined;
     } else if (ann) {
-        console.log("clock skew " + (new Date() - Number('0x' + ann.timestamp)));
+        //console.log("clock skew " + (new Date() - Number('0x' + ann.timestamp)));
     }
 
     let scheme;
@@ -449,8 +449,9 @@ const dropUser = (ctx, user) => {
         }
     }
     const idx = ctx.clients.indexOf(user);
-    if (idx === -1) { throw new Error("drop on user which is not connected"); }
-    ctx.clients.splice(idx, 1);
+    if (idx !== -1) {
+        ctx.clients.splice(idx, 1);
+    }
 };
 
 const socketSendable = function (socket) {
@@ -518,7 +519,6 @@ const backboneConnect = (ctx, socket) => {
     };
     console.log("Incoming connection " + client.addr);
     ctx.clients.push(client);
-    sendMsg(ctx, client, [0, 'HELLO', ctx.version]);
     const hashes = Object.keys(ctx.annByHash).map((x) => (new Buffer(x, 'hex')))
     sendMsg(ctx, client, [0, 'INV', hashes]);
     socket.on('message', function(message) {
@@ -531,7 +531,7 @@ const backboneConnect = (ctx, socket) => {
         }
     });
     socket.on('close', function (evt) {
-        dropUser(ctx, socket.client);
+        dropUser(ctx, client);
     });
 };
 
