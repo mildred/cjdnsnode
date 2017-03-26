@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS messageContent (
 );
 
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "cjdnsnode_user";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "cjdnsnode_user";
 
 DROP FUNCTION IF EXISTS Snode_addMessage(text,text,bigint,bytea,text[]);
 CREATE FUNCTION Snode_addMessage(__senderIpv6 TEXT, __hash TEXT, __ts BIGINT, __content bytea, VARIADIC __announcements text[])
