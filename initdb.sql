@@ -1,3 +1,4 @@
+-- sudo -u postgres psql < ./initdb.sql
 CREATE DATABASE cjdnsnode;
 CREATE USER cjdnsnode_user WITH PASSWORD 'cjdnsnode_passwd';
 GRANT ALL PRIVILEGES ON DATABASE cjdnsnode TO "cjdnsnode_user";
@@ -30,7 +31,7 @@ GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "cjdnsnode_user";
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "cjdnsnode_user";
 
 DROP FUNCTION IF EXISTS Snode_addMessage(text,text,bigint,bytea,text[]);
-CREATE FUNCTION Snode_addMessage(__senderIpv6 TEXT, __hash TEXT, __ts BIGINT, __content bytea, VARIADIC __announcements text[])
+CREATE FUNCTION Snode_addMessage(__senderIpv6 TEXT, __hash TEXT, __ts BIGINT, __content bytea, __announcements text[])
     RETURNS void AS $$
     DECLARE
         _messageId INTEGER;

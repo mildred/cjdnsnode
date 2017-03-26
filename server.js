@@ -236,6 +236,7 @@ const propagateMsg = (ctx, annHash, bytes) => {
 
 const storeToDb = (ctx, nodeIp, annHash, timestamp, annBin, peersIp6) => {
     const args = [ nodeIp, annHash, ''+Number('0x'+timestamp), annBin, peersIp6 ];
+    console.log(JSON.stringify(args));
     ctx.db.query('SELECT Snode_addMessage($1, $2, $3, $4, $5)', args, (err, ret) => {
         if (err) { throw err; }
         console.log(ret);
