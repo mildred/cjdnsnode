@@ -27,7 +27,7 @@ const Cjdnsniff = require('cjdnsniff');
 const Cjdnsadmin = require('cjdnsadmin');
 const Cjdnsann = require('cjdnsann');
 const Http = require('http');
-const WebSocketServer = require('ws').Server;
+const WebSocket = require('ws');
 const Msgpack = require('msgpack5');
 
 const Database = require('./database');
@@ -473,20 +473,38 @@ const handleBackboneMessage = (ctx, user, message) => {
         case 'GET_DATA': {
             const hash = msg[2].toString('hex');
             const ann = ctx.annByHash[hash] || null;
-            sendMsg(ctx, user, [msg[0], ann]);
+            sendMsg(ctx, user, [msg[0], 'DATA', ann]);
             return;
+        }
+        case 'PING': {
+            sendMsg(ctx, user, [msg[0], 'ACK']);
+            return;
+        }
+        case 'INV': {
+            if (!user.outgoing) { return; }
+            msg[2].map((x) => (x.toString('hex')))
+                .filter((x) => (!(x in ctx.annByHash)))
+                .forEach((x) => {
+                    sendMsg(ctx, user, [ctx.mut.seq++, 'GET_DATA', new Buffer(x, 'hex')]);
+                });
+            return;
+        }
+        case 'DATA': {
+            if (!user.outgoing) { return; }
+            handleAnnounce(ctx, msg[2], false, false);
         }
     }
 };
 
 const backboneConnect = (ctx, socket) => {
-    if (socket.upgradeReq.url !== 'backbone_websocket') { return; }
+    if (socket.upgradeReq.url !== 'cjdnsnode_websocket') { return; }
     let conn = socket.upgradeReq.connection;
     let client = {
         addr: conn.remoteAddress + '|' + conn.remotePort,
         socket: socket,
         timeOfLastMessage: now(),
-        pingOutstanding: false
+        pingOutstanding: false,
+        outgoing: false
     };
     ctx.clients.push(client);
     const hashes = Object.keys(ctx.annByHash).map((x) => (new Buffer(x, 'hex')))
@@ -553,15 +571,13 @@ const testSrv = (ctx) => {
             }
             out.push.apply(out, outLinks);
             res.end(out.map(JSON.stringify).join('\n'));
-        } else if (ents[0] === 'websocket') {
-
         } else {
             //console.log(req.url);
             res.end(req.url);
         }
     };
     const httpServer = Http.createServer(reqHandler);
-    const wsSrv = new WebSocketServer({ server: httpServer });
+    const wsSrv = new WebSocket.Server({ server: httpServer });
     wsSrv.on('connection', (conn) => { backboneConnect(ctx, socket) });
     httpServer.listen(3333);
 };
@@ -601,6 +617,46 @@ const loadDb = (ctx, cb) => {
     }).nThen(cb);
 };
 
+const backboneConnectOut = (ctx, url) => {
+    const socket = new WebSocket(url, {
+        perMessageDeflate: false
+    });
+    socket.on('error', (e) => {
+        console.log(e);
+    });
+    nThen((waitFor) => {
+        socket.on('open', waitFor());
+    }).nThen((waitFor) => {
+        let client = {
+            addr: socket.remoteAddress + '|' + socket.remotePort,
+            socket: socket,
+            timeOfLastMessage: now(),
+            pingOutstanding: false,
+            outgoing: true
+        };
+        ctx.clients.push(client);
+        socket.on('message', function(message) {
+            if (ctx.config.logToStdout) { console.log('>'+message); }
+            try {
+                handleBackboneMessage(ctx, user, message);
+            } catch (e) {
+                console.log(e.stack);
+                dropUser(ctx, user);
+            }
+        });
+        socket.on('close', function (evt) {
+            for (let userId in ctx.users) {
+                if (ctx.users[userId].socket === socket) {
+                    dropUser(ctx, ctx.users[userId]);
+                }
+            }
+            setTimeout(() => {
+                backboneConnectOut(ctx, url);
+            }, 1000);
+        });
+    });
+}
+
 const main = () => {
     const confIdx = process.argv.indexOf('--config');
     const config = require( (confIdx > -1) ? process.argv[confIdx+1] : './config' );
@@ -612,12 +668,12 @@ const main = () => {
         clients: [],
         annByHash: {},
 
-        logPath: config.datastore,
         config: config,
         db: Database.create(config),
         msgpack: Msgpack(),
 
         mut: {
+            seq: 0,
             dijkstra: undefined,
             selfNode: undefined
         }
@@ -627,8 +683,10 @@ const main = () => {
         loadDb(ctx, waitFor());
     }).nThen((waitFor) => {
         //keepTableClean(ctx);
-        service(ctx);
+        if (config.connectCjdns) { service(ctx); }
         testSrv(ctx);
+
+        (ctx.config.peers || []).forEach((url) => { backboneConnectOut(ctx, url); });
     });
 };
 main();
