@@ -468,6 +468,7 @@ const randName = function () { return Crypto.randomBytes(16).toString('hex'); };
 
 const handleBackboneMessage = (ctx, user, message) => {
     const msg = ctx.msgpack.decode(message);
+    console.log(msg);
     if (typeof(msg[0]) !== 'number' || typeof(msg[1]) !== 'string') {
         throw new Error();
     }
@@ -499,7 +500,10 @@ const handleBackboneMessage = (ctx, user, message) => {
 };
 
 const backboneConnect = (ctx, socket) => {
-    if (socket.upgradeReq.url !== 'cjdnsnode_websocket') { return; }
+    if (socket.upgradeReq.url !== 'cjdnsnode_websocket') {
+        socket.close();
+        return;
+    }
     let conn = socket.upgradeReq.connection;
     let client = {
         addr: conn.remoteAddress + '|' + conn.remotePort,
@@ -508,24 +512,22 @@ const backboneConnect = (ctx, socket) => {
         pingOutstanding: false,
         outgoing: false
     };
+    console.log("Incoming connection " + client.addr);
     ctx.clients.push(client);
+    sendMsg(ctx, client, [0, 'HELLO', ctx.version]);
     const hashes = Object.keys(ctx.annByHash).map((x) => (new Buffer(x, 'hex')))
-    sendMsg(ctx, user, [0, 'INV', hashes]);
+    sendMsg(ctx, client, [0, 'INV', hashes]);
     socket.on('message', function(message) {
         if (ctx.config.logToStdout) { console.log('>'+message); }
         try {
-            handleBackboneMessage(ctx, user, message);
+            handleBackboneMessage(ctx, client, message);
         } catch (e) {
             console.log(e.stack);
             dropUser(ctx, user);
         }
     });
     socket.on('close', function (evt) {
-        for (let userId in ctx.users) {
-            if (ctx.users[userId].socket === socket) {
-                dropUser(ctx, ctx.users[userId]);
-            }
-        }
+        dropUser(ctx, socket.client);
     });
 };
 
@@ -580,7 +582,7 @@ const testSrv = (ctx) => {
     };
     const httpServer = Http.createServer(reqHandler);
     const wsSrv = new WebSocket.Server({ server: httpServer });
-    wsSrv.on('connection', (socket) => { backboneConnect(ctx, socket) });
+    wsSrv.on('connection', (socket) => ( backboneConnect(ctx, socket) ));
     httpServer.listen(3333);
 };
 
@@ -625,10 +627,12 @@ const backboneConnectOut = (ctx, url) => {
     });
     socket.on('error', (e) => {
         console.log(e);
+        setTimeout(() => { backboneConnectOut(ctx, url); }, 10000);
     });
     nThen((waitFor) => {
         socket.on('open', waitFor());
     }).nThen((waitFor) => {
+        console.log('Connected to ' + url);
         let client = {
             addr: socket.remoteAddress + '|' + socket.remotePort,
             socket: socket,
@@ -636,25 +640,19 @@ const backboneConnectOut = (ctx, url) => {
             pingOutstanding: false,
             outgoing: true
         };
+        socket.client = client;
         ctx.clients.push(client);
         socket.on('message', function(message) {
-            if (ctx.config.logToStdout) { console.log('>'+message); }
             try {
-                handleBackboneMessage(ctx, user, message);
+                handleBackboneMessage(ctx, client, message);
             } catch (e) {
                 console.log(e.stack);
-                dropUser(ctx, user);
+                dropUser(ctx, client);
             }
         });
         socket.on('close', function (evt) {
-            for (let userId in ctx.users) {
-                if (ctx.users[userId].socket === socket) {
-                    dropUser(ctx, ctx.users[userId]);
-                }
-            }
-            setTimeout(() => {
-                backboneConnectOut(ctx, url);
-            }, 1000);
+            dropUser(ctx, socket.client);
+            setTimeout(() => { backboneConnectOut(ctx, url); }, 1000);
         });
     });
 }
@@ -669,6 +667,7 @@ const main = () => {
         nodesByIp: {},
         clients: [],
         annByHash: {},
+        version: 1,
 
         config: config,
         db: Database.create(config),
