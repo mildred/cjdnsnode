@@ -15,6 +15,7 @@ const socketSendable = function (socket) {
 };
 
 const dropPeer = (ctx, peer) => {
+    try { throw new Error(); } catch (e) { console.log(e.stack); }
     if (peer.socket.readyState !== 2 /* WebSocket.CLOSING */
         && peer.socket.readyState !== 3 /* WebSocket.CLOSED */)
     {
@@ -183,12 +184,10 @@ const addAnn = (ctx, hash, binary) => {
 
 const pingCycle = (ctx) => {
     ctx.peers.forEach((p) => {
-        const tslm = p.mut.timeOfLastMessage;
-        if (p.mut.timeOfLastMessage > DROP_AFTER_MS) {
+        const lag = now() - p.mut.timeOfLastMessage;
+        if (lag > DROP_AFTER_MS) {
             dropPeer(ctx, p);
-        } else if (p.mut.timeOfLastMessage > PING_AFTER_MS &&
-            typeof(ctx.pings[p.id]) === 'undefined')
-        {
+        } else if (lag > PING_AFTER_MS && typeof(ctx.pings[p.id]) === 'undefined') {
             const seq = ctx.mut.seq++;
             ctx.pings[p.id] = { seq: seq, time: now() };
             sendPeerMsg(ctx, p, [seq, 'PING']);
