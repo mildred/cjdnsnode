@@ -26,7 +26,6 @@ const Cjdnskeys = require('cjdnskeys');
 const Cjdnsniff = require('cjdnsniff');
 const Cjdnsadmin = require('cjdnsadmin');
 const Cjdnsann = require('cjdnsann');
-const Pg = require('pg');
 const Http = require('http');
 const WebSocketServer = require('ws').Server;
 const Msgpack = require('msgpack5');
@@ -217,14 +216,6 @@ const addNode = (ctx, node, overwrite) => {
     return node;
 };
 
-const buildMsg = (bytes) => {
-    const toWrite = new Buffer(8 + bytes.length);
-    toWrite.writeUInt32BE(0x5f3759df, 0);
-    toWrite.writeUInt32BE(bytes.length, 4);
-    bytes.copy(toWrite, 8);
-    return toWrite;
-};
-
 const propagateMsg = (ctx, annHash, bytes) => {
     //const toWrite = buildMsg(bytes);
     if (annHash in ctx.annByHash) { throw new Error(); }
@@ -234,17 +225,7 @@ const propagateMsg = (ctx, annHash, bytes) => {
     });
 };
 
-const storeToDb = (ctx, nodeIp, annHash, timestamp, annBin, peersIp6) => {
-    const args = [ nodeIp, annHash, ''+Number('0x'+timestamp), annBin, peersIp6 ];
-    console.log(JSON.stringify(args));
-    ctx.db.query('SELECT Snode_addMessage($1, $2, $3, $4, $5)', args, (err, ret) => {
-        if (err) { throw err; }
-        console.log(ret);
-        console.log('ADD MESSAGE COMPLETE');
-    });
-};
-
-const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
+const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
     let ann;
     let replyError = 'none';
     const annHash = Crypto.createHash('sha512').update(annBin).digest('hex');
@@ -271,7 +252,7 @@ const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
     let maxClockSkew;
     if (fromNode) {
         maxClockSkew = MAX_CLOCKSKEW_MS;
-        if (ann && ann.snodeIp !== ctx.mut.selfNode.ipv6 && false) { // TODO
+        if (ann && ann.snodeIp !== ctx.mut.selfNode.ipv6) {
             console.log("announcement meant for other snode");
             replyError = "wrong_snode";
             ann = undefined;
@@ -360,10 +341,10 @@ const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
         ctx.mut.dijkstra = undefined;
     });
 
-    if (shouldLog) {
-        storeToDb(ctx, ann.nodeIp, annHash, ann.timestamp, annBin, peersIp6);
-        propagateMsg(ctx, annHash, ann.binary);
+    if (!fromDb) {
+        ctx.db.addMessage(ann.nodeIp, annHash, ann.timestamp, annBin, peersIp6);
     }
+    propagateMsg(ctx, annHash, ann.binary);
     return { stateHash: nodeAnnouncementHash(node), error: replyError };
 };
 
@@ -396,7 +377,7 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
         delete msg.contentBenc.tar;
         cjdnslink.send(msg);
     } else if (msg.contentBenc.sq.toString('utf8') === 'ann') {
-        const reply = handleAnnounce(ctx, msg.contentBenc.ann, true, cjdnslink);
+        const reply = handleAnnounce(ctx, msg.contentBenc.ann, true, false);
         reply.txid = msg.contentBenc.txid;
         reply.p = ctx.mut.selfNode.version;
         reply.recvTime = +new Date();
@@ -526,7 +507,6 @@ const backboneConnect = (ctx, socket) => {
     });
 };
 
-
 const testSrv = (ctx) => {
     const reqHandler = (req, res) => {
         const ents = req.url.split('/');
@@ -603,25 +583,19 @@ const keepTableClean = (ctx) => {
 const loadDb = (ctx, cb) => {
     console.log('gc');
     nThen((waitFor) => {
-        ctx.db.connect(waitFor((err, c, done) => {
-            if (err) { throw err; }
-            console.log("Db connected");
-        }));
-        ctx.db.on('notification', (n) => { console.log(n); });
-    }).nThen((waitFor) => {
+        ctx.db._db.on('notification', (n) => { console.log(n); });
+
         const minTs = now() - GLOBAL_TIMEOUT_MS;
-        const q = ctx.db.query('SELECT Snode_garbageCollect($1)', [ minTs ]);
-        q.on('error', (err) => { throw err; });
-        q.on('end', waitFor((err, ret) => { console.log("Garbage collection complete"); }));
+        ctx.db.garbageCollect(minTs, waitFor(() => {
+            console.log("Garbage collection complete");
+        }));
     }).nThen((waitFor) => {
         console.log('gc3');
-        ctx.db.query('SELECT content FROM messageContent', waitFor((err, result) => {
+        ctx.db.getAllMessages((msgBytes) => {
+            handleAnnounce(ctx, msgBytes, false, true);
+        }, waitFor());
             if (err) { throw err; }
-            console.log(result);
-            //const magic = buf.readUInt32BE(i); i += 4;
-            //const len = buf.readUInt32BE(i); i += 4;
-            //if (magic !== 0x5f3759df) { throw new Error("bad magic"); }
-            //handleAnnounce(ctx, buf.slice(i, i += len), false, false);
+            console.log('messages loaded');
         }));
     }).nThen(cb);
 };
@@ -629,14 +603,6 @@ const loadDb = (ctx, cb) => {
 const main = () => {
     const confIdx = process.argv.indexOf('--config');
     const config = require( (confIdx > -1) ? process.argv[confIdx+1] : './config' );
-    config.postgres = config.postgres || {};
-    config.postgres.user = config.postgres.user || 'cjdnsnode_user';
-    config.postgres.database = config.postgres.database || 'cjdnsnode';
-    config.postgres.password = config.postgres.password || 'cjdnsnode_passwd';
-    config.postgres.host = config.postgres.host || 'localhost';
-    config.postgres.port = config.postgres.port || 5432;
-
-    const db = new Pg.Client(config.postgres);
 
     let ctx = Object.freeze({
         //nodesByKey: {},
@@ -647,7 +613,7 @@ const main = () => {
 
         logPath: config.datastore,
         config: config,
-        db: db,
+        db: Database.create(config),
         msgpack: Msgpack(),
 
         mut: {

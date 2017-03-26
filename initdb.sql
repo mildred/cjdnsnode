@@ -1,4 +1,5 @@
 -- sudo -u postgres psql < ./initdb.sql
+-- echo 'drop database cjdnsnode;' | cat - ./initdb.sql | sudo -u postgres psql
 CREATE DATABASE cjdnsnode;
 CREATE USER cjdnsnode_user WITH PASSWORD 'cjdnsnode_passwd';
 GRANT ALL PRIVILEGES ON DATABASE cjdnsnode TO "cjdnsnode_user";
@@ -35,11 +36,11 @@ CREATE FUNCTION Snode_addMessage(__senderIpv6 TEXT, __hash TEXT, __ts BIGINT, __
     RETURNS void AS $$
     DECLARE
         _messageId INTEGER;
-        _announcment TEXT;
+        _announcement TEXT;
     BEGIN
         INSERT INTO messages (id, senderIpv6, hash, ts) VALUES (DEFAULT, __senderIpv6, __hash, __ts) RETURNING id INTO _messageId;
         INSERT INTO messageContent (id, content) VALUES (_messageId, __content);
-        FOREACH _announcment IN ARRAY __announcements LOOP
+        FOREACH _announcement IN ARRAY __announcements LOOP
             INSERT INTO announcements (senderIpv6, messageId, peerIpv6, ts)
                 VALUES (__senderIpv6, _messageId, _announcement, __ts);
         END LOOP;
@@ -54,7 +55,7 @@ CREATE FUNCTION Snode_deleteMessage(__hash TEXT)
     BEGIN
         SELECT id FROM messages WHERE hash = __hash INTO _id;
         DELETE FROM messageContent WHERE id = _id;
-        DELETE FROM anouncements WHERE messageId = _id;
+        DELETE FROM announcements WHERE messageId = _id;
         DELETE FROM messages WHERE id = _id;
     END;
 $$ LANGUAGE 'plpgsql';
