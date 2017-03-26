@@ -10,7 +10,6 @@
     "cjdnsplice": "~0.2.0",
     "msgpack5": "^3.4.1",
     "node-dijkstra": "~2.2.0",
-    "node-lmdb": "~0.4.4",
     "nthen": "~0.1.1",
     "pg": "^6.1.5",
     "saferphore": "~0.0.0",
