@@ -71,7 +71,7 @@ const handleMessage = (ctx, peer, message) => {
             return;
         }
         case 'PING': {
-            console.log('>GET_DATA');
+            console.log('>PING');
             sendPeerMsg(ctx, peer, [msg[0], 'ACK']);
             return;
         }
@@ -191,6 +191,7 @@ const pingCycle = (ctx) => {
             const seq = ctx.mut.seq++;
             ctx.pings[p.id] = { seq: seq, time: now() };
             sendPeerMsg(ctx, p, [seq, 'PING']);
+            console.log('<PING ' + seq);
         }
     });
 };

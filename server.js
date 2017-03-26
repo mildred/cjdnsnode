@@ -38,19 +38,6 @@ const MAX_CLOCKSKEW_MS = (1000 * 10);
 const MAX_GLOBAL_CLOCKSKEW_MS = (1000 * 60 * 60 * 20);
 const GLOBAL_TIMEOUT_MS = MAX_GLOBAL_CLOCKSKEW_MS + AGREED_TIMEOUT_MS;
 
-// DONE
-// test dijkstra
-// 10 minute expiration
-// statefullness
-// fix encodingFormNum
-// send versions in announcement
-
-
-// TODO
-// inter-supernode channel
-// re-enable walking...
-// bootstrapping on subnode
-
 
 const now = () => (+new Date());
 
@@ -134,6 +121,7 @@ const nodeAnnouncementHash = (node) => {
             carry = hash.update(node.mut.announcements[i].binary).digest();
         }
     }
+    node.mut.stateHash = carry;
     return carry;
 };
 
@@ -201,7 +189,8 @@ const mkNode = (ctx, obj) => {
         inwardLinksByIp: {},
         mut: {
             timestamp: obj.timestamp,
-            announcements: [ ]
+            announcements: [ ],
+            stateHash: undefined
         }
     });
     if (obj.announcement) {
@@ -357,19 +346,18 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
         const tarIp = Cjdnskeys.ip6BytesToString(msg.contentBenc.tar);
         const src = ctx.nodesByIp[srcIp];
         const tar = ctx.nodesByIp[tarIp];
-        console.log("getRoute req " + srcIp + " " + tarIp);
+        const logMsg = "getRoute req " + srcIp + " " + tarIp + "  ";
         const r = getRoute(ctx, src, tar);
 
         if (r) {
-            console.log(">> " + r.label);
+            console.log(logMsg + r.label);
             msg.contentBenc.n = Buffer.concat([
                 Cjdnskeys.keyStringToBytes(tar.key),
                 new Buffer(r.label.replace(/\./g, ''), 'hex')
             ]);
-            // TODO this is garbage we are sending the same version every time
-            msg.contentBenc.np = new Buffer([1, 19]);
+            msg.contentBenc.np = new Buffer([1, tar.version]);
         } else {
-            console.log(">> not found ");
+            console.log(logMsg + "not found");
         }
         msg.contentBenc.recvTime = now();
 
@@ -387,6 +375,13 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
         cjdnslink.send(msg);
     } else if (msg.contentBenc.sq.toString('utf8') === 'pn') {
         msg.contentBenc.recvTime = now();
+        msg.contentBenc.stateHash = new Buffer(new Array(64).fill(0));
+        if (msg.routeHeader.ip in ctx.nodesByIp) {
+            const n = ctx.nodesByIp[msg.routeHeader.ip];
+            if (n.mut.stateHash) {
+                msg.contentBenc.stateHash = n.mut.stateHash;
+            }
+        }
         delete msg.contentBenc.sq;
         delete msg.contentBenc.src;
         delete msg.contentBenc.tar;
@@ -427,6 +422,15 @@ const service = (ctx) => {
                 onSubnodeMessage(ctx, msg, cjdnslink);
             });
         }));
+    }).nThen((waitFor) => {
+        setInterval(() => {
+            cjdns.UpperDistributor_listHandlers(0, (err, ret) => {
+                if (err) { throw err; }
+                if (!ret.handles.length) {
+                    throw new Error("became disconnected for cjdns");
+                }
+            })
+        }, 5000);
     });
 };
 
@@ -441,7 +445,7 @@ const testSrv = (ctx) => {
             const tarIp = ents[1];
             const src = ctx.nodesByIp[srcIp];
             const tar = ctx.nodesByIp[tarIp];
-            console.log("getRoute req " + srcIp + " " + tarIp);
+            console.log("http getRoute req " + srcIp + " " + tarIp);
             if (!src) { res.end("src not found"); return; }
             if (!tar) { res.end("tar not found"); return; }
             const r = getRoute(ctx, src, tar);
@@ -504,7 +508,6 @@ const loadDb = (ctx, cb) => {
     console.log('gc');
     nThen((waitFor) => {
         ctx.db._db.on('notification', (n) => { console.log(n); });
-
         const minTs = now() - GLOBAL_TIMEOUT_MS;
         ctx.db.garbageCollect(minTs, waitFor(() => {
             console.log("Garbage collection complete");
