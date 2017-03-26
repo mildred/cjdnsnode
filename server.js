@@ -426,7 +426,10 @@ const service = (ctx) => {
         setInterval(() => {
             cjdns.UpperDistributor_listHandlers(0, (err, ret) => {
                 if (err) { throw err; }
-                if (!ret.handles.length) {
+                if (ret.error !== 'none') {
+                    throw new Error("from cjdns: " + ret.error);
+                }
+                if (!ret.handlers.length) {
                     throw new Error("became disconnected for cjdns");
                 }
             })
