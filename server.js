@@ -343,10 +343,12 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
         ctx.mut.dijkstra = undefined;
     });
 
-    if (!fromDb) {
-        ctx.db.addMessage(ann.nodeIp, annHash, ann.timestamp, annBin, peersIp6);
+    if (peersIp6.length) {
+        if (!fromDb) {
+            ctx.db.addMessage(ann.nodeIp, annHash, ann.timestamp, annBin, peersIp6);
+        }
+        propagateMsg(ctx, annHash, ann.binary);
     }
-    propagateMsg(ctx, annHash, ann.binary);
     return { stateHash: nodeAnnouncementHash(node), error: replyError };
 };
 
