@@ -27,15 +27,12 @@ const Cjdnsniff = require('cjdnsniff');
 const Cjdnsadmin = require('cjdnsadmin');
 const Cjdnsann = require('cjdnsann');
 const Http = require('http');
-const WebSocket = require('ws');
-const Msgpack = require('msgpack5');
 
 const Database = require('./database');
+const Peer = require('./peer');
 
 const MS_MINUTE = 1000 * 60;
-const KEEP_TABLE_CLEAN_CYCLE = 3 * MS_MINUTE;
-const EXPIRATION_TIME = 20 * MS_MINUTE;
-
+const KEEP_TABLE_CLEAN_CYCLE = 4 * 60 * MS_MINUTE;
 const AGREED_TIMEOUT_MS = 10 * MS_MINUTE;
 const MAX_CLOCKSKEW_MS = (1000 * 10);
 const MAX_GLOBAL_CLOCKSKEW_MS = (1000 * 60 * 60 * 20);
@@ -154,7 +151,7 @@ const versionFromAnnouncement = (ann) => {
     return ver ? ver.version : undefined;
 };
 
-const addAnnouncement = (node, ann) => {
+const addAnnouncement = (ctx, node, ann, annHash) => {
     const time = Number('0x' + ann.timestamp);
     const sinceTime = time - AGREED_TIMEOUT_MS;
     const newAnnounce = [];
@@ -169,7 +166,11 @@ const addAnnouncement = (node, ann) => {
             safe = true;
             peersAnnounced[peers[i].ipv6] = true;
         }
-        if (safe) { newAnnounce.push(a); }
+        if (safe) {
+            newAnnounce.push(a);
+        } else {
+            ctx.peer.deleteAnn(annHash);
+        }
     });
     node.mut.announcements.splice(0, node.mut.announcements.length);
     Array.prototype.push.apply(node.mut.announcements, newAnnounce);
@@ -218,15 +219,6 @@ const addNode = (ctx, node, overwrite) => {
     return node;
 };
 
-const propagateMsg = (ctx, annHash, bytes) => {
-    //const toWrite = buildMsg(bytes);
-    if (annHash in ctx.annByHash) { throw new Error(); }
-    ctx.annByHash[annHash] = bytes;
-    ctx.clients.forEach((u) => {
-        sendMsg(ctx, u, [0, 'INV', 0, [ new Buffer(annHash, 'hex') ] ]);
-    });
-};
-
 const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
     let ann;
     let replyError = 'none';
@@ -255,12 +247,17 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
     if (fromNode) {
         maxClockSkew = MAX_CLOCKSKEW_MS;
         if (ann && ann.snodeIp !== ctx.mut.selfNode.ipv6) {
-            console.log("announcement meant for other snode");
+            console.log("announcement from peer which is one of ours");
             replyError = "wrong_snode";
             ann = undefined;
         }
     } else {
         maxClockSkew = MAX_GLOBAL_CLOCKSKEW_MS;
+        if (!fromDb && ctx.mut.selfNode && ann && ann.snodeIp === ctx.mut.selfNode.ipv6) {
+            console.log("announcement meant for other snode");
+            replyError = "wrong_snode";
+            ann = undefined;
+        }
     }
     if (ann && Math.abs(new Date() - Number('0x' + ann.timestamp)) > maxClockSkew) {
         console.log("unacceptably large clock skew " +
@@ -317,7 +314,7 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
             node = addNode(ctx, nodex, true);
             console.log(node.mut.announcements.length + ' announcements');
         } else {
-            addAnnouncement(node, ann);
+            addAnnouncement(ctx, node, ann, annHash);
         }
     } else {
         node = addNode(ctx, nodex, false);
@@ -347,7 +344,7 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
         if (!fromDb) {
             ctx.db.addMessage(ann.nodeIp, annHash, ann.timestamp, annBin, peersIp6);
         }
-        propagateMsg(ctx, annHash, ann.binary);
+        ctx.peer.addAnn(annHash, ann.binary);
     }
     return { stateHash: nodeAnnouncementHash(node), error: replyError };
 };
@@ -417,7 +414,7 @@ const service = (ctx) => {
                 timestamp: 'ffffffffffffffff'
             });
             console.log("Got selfNode");
-        }))
+        }));
     }).nThen((waitFor) => {
         Cjdnsniff.sniffTraffic(cjdns, 'CJDHT', waitFor((err, cjdnslink) => {
             console.log("Connected to cjdns engine");
@@ -430,108 +427,6 @@ const service = (ctx) => {
                 onSubnodeMessage(ctx, msg, cjdnslink);
             });
         }));
-    });
-};
-
-const dropUser = (ctx, user) => {
-    if (user.socket.readyState !== 2 /* WebSocket.CLOSING */
-        && user.socket.readyState !== 3 /* WebSocket.CLOSED */)
-    {
-        try {
-            user.socket.close();
-        } catch (e) {
-            console.log("Failed to disconnect [" + user.id + "], attempting to terminate");
-            try {
-                user.socket.terminate();
-            } catch (ee) {
-                console.log("Failed to terminate [" + user.id + "]  *shrug*");
-            }
-        }
-    }
-    const idx = ctx.clients.indexOf(user);
-    if (idx !== -1) {
-        ctx.clients.splice(idx, 1);
-    }
-};
-
-const socketSendable = function (socket) {
-    return socket && socket.readyState === 1;
-};
-
-const sendMsg = function (ctx, user, msg) {
-    if (!socketSendable(user.socket)) { return; }
-    try {
-        if (ctx.config.logToStdout) { console.log('<' + JSON.stringify(msg)); }
-        user.socket.send(ctx.msgpack.encode(msg));
-    } catch (e) {
-        console.log(e.stack);
-        dropUser(ctx, user);
-    }
-};
-
-const randName = function () { return Crypto.randomBytes(16).toString('hex'); };
-
-const handleBackboneMessage = (ctx, user, message) => {
-    const msg = ctx.msgpack.decode(message);
-    console.log(msg);
-    if (typeof(msg[0]) !== 'number' || typeof(msg[1]) !== 'string') {
-        throw new Error();
-    }
-    switch (msg[1]) {
-        case 'GET_DATA': {
-            const hash = msg[2].toString('hex');
-            const ann = ctx.annByHash[hash] || null;
-            sendMsg(ctx, user, [msg[0], 'DATA', ann]);
-            return;
-        }
-        case 'PING': {
-            sendMsg(ctx, user, [msg[0], 'ACK']);
-            return;
-        }
-        case 'INV': {
-            if (!user.outgoing) { return; }
-            msg[2].map((x) => (x.toString('hex')))
-                .filter((x) => (!(x in ctx.annByHash)))
-                .forEach((x) => {
-                    sendMsg(ctx, user, [ctx.mut.seq++, 'GET_DATA', new Buffer(x, 'hex')]);
-                });
-            return;
-        }
-        case 'DATA': {
-            if (!user.outgoing) { return; }
-            handleAnnounce(ctx, msg[2], false, false);
-        }
-    }
-};
-
-const backboneConnect = (ctx, socket) => {
-    if (socket.upgradeReq.url !== '/cjdnsnode_websocket') {
-        socket.close();
-        return;
-    }
-    let conn = socket.upgradeReq.connection;
-    let client = {
-        addr: conn.remoteAddress + '|' + conn.remotePort,
-        socket: socket,
-        timeOfLastMessage: now(),
-        pingOutstanding: false,
-        outgoing: false
-    };
-    console.log("Incoming connection " + client.addr);
-    ctx.clients.push(client);
-    const hashes = Object.keys(ctx.annByHash).map((x) => (new Buffer(x, 'hex')))
-    sendMsg(ctx, client, [0, 'INV', hashes]);
-    socket.on('message', function(message) {
-        if (ctx.config.logToStdout) { console.log('>'+message); }
-        try {
-            handleBackboneMessage(ctx, client, message);
-        } catch (e) {
-            console.log(e.stack);
-            dropUser(ctx, user);
-        }
-    });
-    socket.on('close', function (evt) {
-        dropUser(ctx, client);
     });
 };
 
@@ -585,15 +480,14 @@ const testSrv = (ctx) => {
         }
     };
     const httpServer = Http.createServer(reqHandler);
-    const wsSrv = new WebSocket.Server({ server: httpServer });
-    wsSrv.on('connection', (socket) => ( backboneConnect(ctx, socket) ));
+    ctx.peer.runServer(httpServer);
     httpServer.listen(3333);
 };
 
 const keepTableClean = (ctx) => {
     setInterval(() => {
         console.log("keepTableClean()");
-        const minTime = now() - EXPIRATION_TIME;
+        const minTime = now() - GLOBAL_TIMEOUT_MS;
         for (const nodeIp in ctx.nodesByIp) {
             const node = ctx.nodesByIp[nodeIp];
             const n = now();
@@ -625,42 +519,6 @@ const loadDb = (ctx, cb) => {
     }).nThen(cb);
 };
 
-const backboneConnectOut = (ctx, url) => {
-    const socket = new WebSocket(url, {
-        perMessageDeflate: false
-    });
-    socket.on('error', (e) => {
-        console.log(e);
-        setTimeout(() => { backboneConnectOut(ctx, url); }, 10000);
-    });
-    nThen((waitFor) => {
-        socket.on('open', waitFor());
-    }).nThen((waitFor) => {
-        console.log('Connected to ' + url);
-        let client = {
-            addr: socket.remoteAddress + '|' + socket.remotePort,
-            socket: socket,
-            timeOfLastMessage: now(),
-            pingOutstanding: false,
-            outgoing: true
-        };
-        socket.client = client;
-        ctx.clients.push(client);
-        socket.on('message', function(message) {
-            try {
-                handleBackboneMessage(ctx, client, message);
-            } catch (e) {
-                console.log(e.stack);
-                dropUser(ctx, client);
-            }
-        });
-        socket.on('close', function (evt) {
-            dropUser(ctx, client);
-            setTimeout(() => { backboneConnectOut(ctx, url); }, 1000);
-        });
-    });
-}
-
 const main = () => {
     const confIdx = process.argv.indexOf('--config');
     const config = require( (confIdx > -1) ? process.argv[confIdx+1] : './config' );
@@ -670,15 +528,13 @@ const main = () => {
         //ipnodes: {},
         nodesByIp: {},
         clients: [],
-        annByHash: {},
         version: 1,
 
         config: config,
         db: Database.create(config),
-        msgpack: Msgpack(),
+        peer: Peer.create(),
 
         mut: {
-            seq: 0,
             dijkstra: undefined,
             selfNode: undefined
         }
@@ -690,8 +546,8 @@ const main = () => {
         //keepTableClean(ctx);
         if (config.connectCjdns) { service(ctx); }
         testSrv(ctx);
-
-        (ctx.config.peers || []).forEach((url) => { backboneConnectOut(ctx, url); });
+        ctx.peer.onAnnounce((peer, msg) => { handleAnnounce(ctx, msg, false, false); });
+        (ctx.config.peers || []).forEach(ctx.peer.connectTo);
     });
 };
 main();

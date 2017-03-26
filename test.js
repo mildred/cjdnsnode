@@ -54,7 +54,7 @@ const main = () => {
     }).nThen((waitFor) => {
         db.getMessage(ANN[1], waitFor((msg) => {
             if (msg.toString('base64') !== ANN[3].toString('base64')) { throw new Error(); }
-        }))
+        }));
     }).nThen((waitFor) => {
         db.deleteMessage(ANN[1], waitFor());
     }).nThen((waitFor) => {
