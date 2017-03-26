@@ -580,7 +580,7 @@ const testSrv = (ctx) => {
     };
     const httpServer = Http.createServer(reqHandler);
     const wsSrv = new WebSocket.Server({ server: httpServer });
-    wsSrv.on('connection', (conn) => { backboneConnect(ctx, socket) });
+    wsSrv.on('connection', (socket) => { backboneConnect(ctx, socket) });
     httpServer.listen(3333);
 };
 
