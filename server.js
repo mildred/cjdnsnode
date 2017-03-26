@@ -229,8 +229,9 @@ const propagateMsg = (ctx, annHash, bytes) => {
     //const toWrite = buildMsg(bytes);
     if (annHash in ctx.annByHash) { throw new Error(); }
     ctx.annByHash[annHash] = bytes;
-    ctx.clients.forEach()
-    sendMsg(ctx, user, [0, 'INV', [ new Buffer(annHash, 'hex') ] ]);
+    ctx.clients.forEach((u) => {
+        sendMsg(ctx, u, [0, 'INV', 0, [ new Buffer(annHash, 'hex') ] ]);
+    });
 };
 
 const storeToDb = (ctx, nodeIp, annHash, timestamp, annBin, peersIp6) => {
