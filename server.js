@@ -229,6 +229,7 @@ const propagateMsg = (ctx, annHash, bytes) => {
     //const toWrite = buildMsg(bytes);
     if (annHash in ctx.annByHash) { throw new Error(); }
     ctx.annByHash[annHash] = bytes;
+    ctx.clients.forEach()
     sendMsg(ctx, user, [0, 'INV', [ new Buffer(annHash, 'hex') ] ]);
 };
 
@@ -447,7 +448,7 @@ const service = (ctx) => {
     });
 };
 
-const dropUser = () => {
+const dropUser = (user) => {
     if (user.socket.readyState !== 2 /* WebSocket.CLOSING */
         && user.socket.readyState !== 3 /* WebSocket.CLOSED */)
     {
@@ -462,7 +463,9 @@ const dropUser = () => {
             }
         }
     }
-    delete ctx.users[user.id];
+    const idx = ctx.users.indexOf(user);
+    if (idx === -1) { throw new Error("drop on user which is not connected"); }
+    ctx.users.splice(idx, 1);
 }
 
 const sendMsg = function (ctx, user, msg) {
@@ -499,11 +502,10 @@ const backboneConnect = (ctx, socket) => {
     let client = {
         addr: conn.remoteAddress + '|' + conn.remotePort,
         socket: socket,
-        id: randName(),
         timeOfLastMessage: now(),
         pingOutstanding: false
     };
-    ctx.clients[client.id] = client;
+    ctx.clients.push(client);
     const hashes = Object.keys(ctx.annByHash).map((x) => (new Buffer(x, 'hex')))
     sendMsg(ctx, user, [0, 'INV', hashes]);
     socket.on('message', function(message) {
