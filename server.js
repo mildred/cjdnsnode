@@ -235,13 +235,11 @@ const propagateMsg = (ctx, annHash, bytes) => {
 };
 
 const storeToDb = (ctx, nodeIp, annHash, timestamp, annBin, peersIp6) => {
-    const args = [ nodeIp, annHash, ''+Number(timestamp), annBin ];
-    args.push.apply(args, peersIp6);
-    let fmt = '';
-    args.forEach((_, i) => { if (i) { fmt += ', ' } fmt += '$' + (i+1) });
-    ctx.db.query('SELECT Snode_addMessage(' + fmt + ')', args, (err, ret) => {
+    const args = [ nodeIp, annHash, ''+Number('0x'+timestamp), annBin, peersIp6 ];
+    ctx.db.query('SELECT Snode_addMessage($1, $2, $3, $4, $5)', args, (err, ret) => {
         if (err) { throw err; }
         console.log(ret);
+        console.log('ADD MESSAGE COMPLETE');
     });
 };
 
@@ -272,7 +270,7 @@ const handleAnnounce = (ctx, annBin, fromNode, shouldLog) => {
     let maxClockSkew;
     if (fromNode) {
         maxClockSkew = MAX_CLOCKSKEW_MS;
-        if (ann && ann.snodeIp !== ctx.mut.selfNode.ipv6) {
+        if (ann && ann.snodeIp !== ctx.mut.selfNode.ipv6 && false) { // TODO
             console.log("announcement meant for other snode");
             replyError = "wrong_snode";
             ann = undefined;
@@ -603,22 +601,20 @@ const keepTableClean = (ctx) => {
 
 const loadDb = (ctx, cb) => {
     console.log('gc');
-    let client;
     nThen((waitFor) => {
         ctx.db.connect(waitFor((err, c, done) => {
             if (err) { throw err; }
-            client = c;
             console.log("Db connected");
         }));
+        ctx.db.on('notification', (n) => { console.log(n); });
     }).nThen((waitFor) => {
         const minTs = now() - GLOBAL_TIMEOUT_MS;
-        client.query('SELECT snode_garbagecollect($1)', [ minTs ], waitFor((err, ret) => {
-            if (err) { throw err; }
-            console.log("Garbage collection complete");
-        }));
+        const q = ctx.db.query('SELECT Snode_garbageCollect($1)', [ minTs ]);
+        q.on('error', (err) => { throw err; });
+        q.on('end', waitFor((err, ret) => { console.log("Garbage collection complete"); }));
     }).nThen((waitFor) => {
         console.log('gc3');
-        client.query('SELECT content FROM messageContent', waitFor((err, result) => {
+        ctx.db.query('SELECT content FROM messageContent', waitFor((err, result) => {
             if (err) { throw err; }
             console.log(result);
             //const magic = buf.readUInt32BE(i); i += 4;
@@ -638,8 +634,6 @@ const main = () => {
     config.postgres.password = config.postgres.password || 'cjdnsnode_passwd';
     config.postgres.host = config.postgres.host || 'localhost';
     config.postgres.port = config.postgres.port || 5432;
-    config.postgres.max = config.postgres.max || 10;
-    config.postgres.idleTimeoutMillis = config.postgres.idleTimeoutMillis || 3000;
 
     const db = new Pg.Client(config.postgres);
 

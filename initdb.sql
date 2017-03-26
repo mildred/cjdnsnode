@@ -2,7 +2,6 @@ CREATE DATABASE cjdnsnode;
 CREATE USER cjdnsnode_user WITH PASSWORD 'cjdnsnode_passwd';
 GRANT ALL PRIVILEGES ON DATABASE cjdnsnode TO "cjdnsnode_user";
 \c cjdnsnode;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "cjdnsnode_user";
 
 DO $body$
 BEGIN
@@ -27,6 +26,8 @@ CREATE TABLE IF NOT EXISTS messageContent (
     content bytea NOT NULL
 );
 
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "cjdnsnode_user";
+
 DROP FUNCTION IF EXISTS Snode_addMessage(text,text,bigint,bytea,text[]);
 CREATE FUNCTION Snode_addMessage(__senderIpv6 TEXT, __hash TEXT, __ts BIGINT, __content bytea, VARIADIC __announcements text[])
     RETURNS void AS $$
@@ -34,7 +35,7 @@ CREATE FUNCTION Snode_addMessage(__senderIpv6 TEXT, __hash TEXT, __ts BIGINT, __
         _messageId INTEGER;
         _announcment TEXT;
     BEGIN
-        INSERT INTO messages (id, senderIPv6, hash, ts) VALUES (DEFAULT, __senderIpv6, __hash, __ts) RETURNING id INTO _messageId;
+        INSERT INTO messages (id, senderIpv6, hash, ts) VALUES (DEFAULT, __senderIpv6, __hash, __ts) RETURNING id INTO _messageId;
         INSERT INTO messageContent (id, content) VALUES (_messageId, __content);
         FOREACH _announcment IN ARRAY __announcements LOOP
             INSERT INTO announcements (senderIpv6, messageId, peerIpv6, ts)
