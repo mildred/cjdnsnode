@@ -451,7 +451,11 @@ const dropUser = (ctx, user) => {
     const idx = ctx.clients.indexOf(user);
     if (idx === -1) { throw new Error("drop on user which is not connected"); }
     ctx.clients.splice(idx, 1);
-}
+};
+
+const socketSendable = function (socket) {
+    return socket && socket.readyState === 1;
+};
 
 const sendMsg = function (ctx, user, msg) {
     if (!socketSendable(user.socket)) { return; }
