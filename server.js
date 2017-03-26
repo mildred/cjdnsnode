@@ -30,6 +30,8 @@ const Http = require('http');
 const WebSocketServer = require('ws').Server;
 const Msgpack = require('msgpack5');
 
+const Database = require('./database');
+
 const MS_MINUTE = 1000 * 60;
 const KEEP_TABLE_CLEAN_CYCLE = 3 * MS_MINUTE;
 const EXPIRATION_TIME = 20 * MS_MINUTE;
@@ -593,8 +595,7 @@ const loadDb = (ctx, cb) => {
         console.log('gc3');
         ctx.db.getAllMessages((msgBytes) => {
             handleAnnounce(ctx, msgBytes, false, true);
-        }, waitFor());
-            if (err) { throw err; }
+        }, waitFor(() => {
             console.log('messages loaded');
         }));
     }).nThen(cb);
