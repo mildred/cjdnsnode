@@ -433,7 +433,7 @@ const service = (ctx) => {
     });
 };
 
-const dropUser = (user) => {
+const dropUser = (ctx, user) => {
     if (user.socket.readyState !== 2 /* WebSocket.CLOSING */
         && user.socket.readyState !== 3 /* WebSocket.CLOSED */)
     {
@@ -448,9 +448,9 @@ const dropUser = (user) => {
             }
         }
     }
-    const idx = ctx.users.indexOf(user);
+    const idx = ctx.clients.indexOf(user);
     if (idx === -1) { throw new Error("drop on user which is not connected"); }
-    ctx.users.splice(idx, 1);
+    ctx.clients.splice(idx, 1);
 }
 
 const sendMsg = function (ctx, user, msg) {
@@ -500,7 +500,7 @@ const handleBackboneMessage = (ctx, user, message) => {
 };
 
 const backboneConnect = (ctx, socket) => {
-    if (socket.upgradeReq.url !== 'cjdnsnode_websocket') {
+    if (socket.upgradeReq.url !== '/cjdnsnode_websocket') {
         socket.close();
         return;
     }
@@ -651,7 +651,7 @@ const backboneConnectOut = (ctx, url) => {
             }
         });
         socket.on('close', function (evt) {
-            dropUser(ctx, socket.client);
+            dropUser(ctx, client);
             setTimeout(() => { backboneConnectOut(ctx, url); }, 1000);
         });
     });
