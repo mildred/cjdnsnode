@@ -1,3 +1,8 @@
 module.exports = {
-    datastore: "./datastore"
+    postgres: {
+        user: 'cjdnsnode_user',
+        database: 'cjdnsnode',
+        password: 'cjdnsnode_passwd',
+        host: 'localhost'
+    }
 };
