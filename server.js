@@ -340,6 +340,10 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
 
 const onSubnodeMessage = (ctx, msg, cjdnslink) => {
     if (!msg.contentBenc.sq) { return; }
+    if (!msg.routeHeader.version || !msg.routeHeader.publicKey) {
+        console.log("message from " + msg.routeHeader.ip + " with missing key or version");
+        return;
+    }
     if (msg.contentBenc.sq.toString('utf8') === 'gr') {
         const srcIp = Cjdnskeys.ip6BytesToString(msg.contentBenc.src);
         const tarIp = Cjdnskeys.ip6BytesToString(msg.contentBenc.tar);
@@ -474,7 +478,8 @@ const testSrv = (ctx) => {
                         "-",
                         node.key,
                         otherNode ? otherNode.key : peerIp,
-                        link.label
+                        link.label,
+                        link.drops
                     ]);
                 }
             }
