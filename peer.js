@@ -177,7 +177,7 @@ const connectTo = (ctx, url) => {
 const addAnn = (ctx, hash, binary) => {
     ctx.annByHash[hash] = binary;
     ctx.peers.forEach((p) => {
-        if (!p.outgoing) { return; }
+        if (p.outgoing) { return; }
         sendPeerMsg(ctx, p, [0, 'INV', 0, [ new Buffer(hash, 'hex') ] ]);
     });
 };

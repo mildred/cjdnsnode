@@ -97,7 +97,7 @@ const getRoute = (ctx, src, dst) => {
             if (curFormNum < formNum) {
                 label = Cjdnsplice.reEncode(label, last.encodingScheme, formNum);
             }
-            labels.push(label);
+            labels.unshift(label);
             hops.push({
                 label: label,
                 origLabel: link.label,
@@ -108,9 +108,9 @@ const getRoute = (ctx, src, dst) => {
         }
         last = node;
     });
-    labels.push('0000.0000.0000.0001');
+    labels.unshift('0000.0000.0000.0001');
     const spliced = Cjdnsplice.splice.apply(null, labels);
-    return { label: spliced, hops: hops };
+    return { label: spliced, hops: hops, path:path };
 };
 
 const nodeAnnouncementHash = (node) => {
@@ -340,7 +340,6 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
 
 const onSubnodeMessage = (ctx, msg, cjdnslink) => {
     if (!msg.contentBenc.sq) { return; }
-    console.log(msg.contentBenc.sq.toString('utf8'));
     if (msg.contentBenc.sq.toString('utf8') === 'gr') {
         const srcIp = Cjdnskeys.ip6BytesToString(msg.contentBenc.src);
         const tarIp = Cjdnskeys.ip6BytesToString(msg.contentBenc.tar);
@@ -432,7 +431,7 @@ const service = (ctx) => {
                 if (!ret.handlers.length) {
                     throw new Error("became disconnected for cjdns");
                 }
-            })
+            });
         }, 5000);
     });
 };
