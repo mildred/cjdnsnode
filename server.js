@@ -120,8 +120,8 @@ const nodeAnnouncementHash = (node) => {
             const hash = Crypto.createHash('sha512').update(carry);
             carry = hash.update(node.mut.announcements[i].binary).digest();
         }
+        node.mut.stateHash = carry;
     }
-    node.mut.stateHash = carry;
     return carry;
 };
 
