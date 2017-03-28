@@ -1,9 +1,11 @@
+/*@flow*/
 const Pg = require('pg');
+/*::const ConfigType = require('./config.example.js');*/
 
 const NOFUNC = ()=>{};
 
 const addMessage = (ctx, nodeIp, annHash, timestamp, annBin, peersIp6, cb) => {
-    const args = [ nodeIp, annHash, ''+Number('0x'+timestamp), annBin, peersIp6 ];
+    const args = [ nodeIp, annHash, timestamp, annBin, peersIp6 ];
     ctx.db.query('SELECT Snode_addMessage($1, $2, $3, $4, $5)', args, (err, ret) => {
         if (err) { throw err; }
         cb();
@@ -45,7 +47,7 @@ const getAllMessages = (ctx, msgCb, doneCb) => {
     q.on('end', doneCb);
 };
 
-module.exports.create = (config) => {
+module.exports.create = (config /*:ConfigType*/) => {
     config.postgres = config.postgres || {};
     config.postgres.user = config.postgres.user || 'cjdnsnode_user';
     config.postgres.database = config.postgres.database || 'cjdnsnode';
@@ -60,26 +62,32 @@ module.exports.create = (config) => {
     db.connect();
     return {
         _db: db,
-        addMessage: (nodeIp, annHash, timestamp, annBin, peersIp6, cb) => {
-            addMessage(ctx, nodeIp, annHash, timestamp, annBin, peersIp6, cb || NOFUNC);
+        addMessage: (
+            nodeIp /*:string*/,
+            annHash /*:string*/,
+            timestamp /*:number*/,
+            annBin /*:Buffer*/,
+            peersIp6 /*:Array<string>*/,
+            cb /*:()=>void*/
+        ) => {
+            addMessage(ctx, nodeIp, annHash, timestamp, annBin, peersIp6, cb);
         },
-        deleteMessage: (hash, cb) => {
-            deleteMessage(ctx, hash, cb || NOFUNC);
+        deleteMessage: (hash /*:string*/, cb /*:()=>void*/) => {
+            deleteMessage(ctx, hash, cb);
         },
-        garbageCollect: (minTs, cb) => {
-            garbageCollect(ctx, minTs, cb || NOFUNC);
+        garbageCollect: (minTs /*:number*/, cb /*:()=>void*/) => {
+            garbageCollect(ctx, minTs, cb);
         },
-        getMessage: (hash, cb) => {
-            getMessage(ctx, hash, cb || NOFUNC);
+        getMessage: (hash /*:string*/, cb /*:(?Buffer)=>void*/) => {
+            getMessage(ctx, hash, cb);
         },
-        getMessageHashes: (hashCb, doneCb) => {
-            getMessageHashes(ctx, hashCb || NOFUNC, doneCb || NOFUNC);
+        getMessageHashes: (hashCb /*:(string)=>void*/, doneCb /*:()=>void*/) => {
+            getMessageHashes(ctx, hashCb, doneCb);
         },
-        getAllMessages: (msgCb, doneCb) => {
-            getAllMessages(ctx, msgCb || NOFUNC, doneCb || NOFUNC);
+        getAllMessages: (msgCb /*:(Buffer)=>void*/, doneCb /*:()=>void*/) => {
+            getAllMessages(ctx, msgCb, doneCb);
         },
-        disconnect: (cb) => {
-            cb = cb || NOFUNC;
+        disconnect: (cb /*:()=>void*/) => {
             db.end((err) => {
                 if (err) { throw err; }
                 //console.log('disconnected');

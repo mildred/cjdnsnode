@@ -1,6 +1,4 @@
-#!/usr/bin/env node
-/* -*- Mode:js */
-/* vim: set expandtab ts=4 sw=4: */
+/* @flow */
 /*
  * You may redistribute this program and/or modify it under the terms of
  * the GNU General Public License as published by the Free Software Foundation,
@@ -21,7 +19,6 @@ const Udp = require('dgram');
 const Crypto = require('crypto');
 const Dijkstra = require('node-dijkstra');
 const Cjdnsplice = require('cjdnsplice');
-const nThen = require('nthen');
 const Cjdnskeys = require('cjdnskeys');
 const Cjdnsniff = require('cjdnsniff');
 const Cjdnsadmin = require('cjdnsadmin');
@@ -30,6 +27,13 @@ const Http = require('http');
 
 const Database = require('./database');
 const Peer = require('./peer');
+/*::const ConfigType = require('./config.example.js');*/
+
+/*::
+type WaitFor = (...Array<any>)=>(...Array<any>)=>void;
+type Nthen = ((WaitFor)=>void)=>Nthen;
+*/
+const nThen /*:Nthen*/ = require('nthen');
 
 const MS_MINUTE = 1000 * 60;
 const KEEP_TABLE_CLEAN_CYCLE = 4 * 60 * MS_MINUTE;
@@ -38,10 +42,10 @@ const MAX_CLOCKSKEW_MS = (1000 * 10);
 const MAX_GLOBAL_CLOCKSKEW_MS = (1000 * 60 * 60 * 20);
 const GLOBAL_TIMEOUT_MS = MAX_GLOBAL_CLOCKSKEW_MS + AGREED_TIMEOUT_MS;
 
-
 const now = () => (+new Date());
 
 const mkLink = (annPeer, ann) => {
+    if (!ann) { throw new Error(); }
     return Object.freeze({
         label: annPeer.label,
         mtu: annPeer.mtu,
@@ -58,17 +62,6 @@ const linkValue = (link) => {
     return 1;
 };
 
-const buildGraph = (ctx) => {
-    if (ctx.mut.dijkstra) { return; }
-    const dijkstra = ctx.mut.dijkstra = new Dijkstra();
-    for (const nip in ctx.nodesByIp) {
-        const links = ctx.nodesByIp[nip].inwardLinksByIp;
-        const l = {};
-        for (const pip in links) { l[pip] = linkValue(links[pip]); }
-        ctx.mut.dijkstra.addNode(nip, l);
-    }
-};
-
 const getRoute = (ctx, src, dst) => {
     if (!src || !dst) { return null; }
 
@@ -76,7 +69,16 @@ const getRoute = (ctx, src, dst) => {
         return { label: '0000.0000.0000.0001', hops: [] };
     }
 
-    buildGraph(ctx);
+    if (!ctx.mut.dijkstra) {
+        const dijkstra = ctx.mut.dijkstra = new Dijkstra();
+        for (const nip in ctx.nodesByIp) {
+            const links = ctx.nodesByIp[nip].inwardLinksByIp;
+            const l = {};
+            for (const pip in links) { l[pip] = linkValue(links[pip]); }
+            ctx.mut.dijkstra.addNode(nip, l);
+        }
+    }
+
     // we ask for the path in reverse because we build the graph in reverse.
     // because nodes announce own their reachability instead of announcing reachability of others.
     const path = ctx.mut.dijkstra.path(dst.ipv6, src.ipv6);
@@ -184,9 +186,9 @@ const mkNode = (ctx, obj) => {
         type: "Node",
         version: obj.version,
         key: obj.key,
-        ipv6: Cjdnskeys.publicToIp6(obj.key),
+        ipv6: obj.ipv6,
         encodingScheme: encodingScheme,
-        inwardLinksByIp: {},
+        inwardLinksByIp: { },
         mut: {
             timestamp: obj.timestamp,
             announcements: [ ],
@@ -235,6 +237,7 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
     let maxClockSkew;
     if (fromNode) {
         maxClockSkew = MAX_CLOCKSKEW_MS;
+        if (!ctx.mut.selfNode) { throw new Error(); }
         if (ann && ann.snodeIp !== ctx.mut.selfNode.ipv6) {
             console.log("announcement from peer which is one of ours");
             replyError = "wrong_snode";
@@ -278,7 +281,7 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
     }
 
     if (!ann) {
-        return { stateHash: nodeAnnouncementHash(node), debug: replyError };
+        return { stateHash: nodeAnnouncementHash(node), error: replyError };
     }
 
     const nodex = mkNode(ctx, {
@@ -286,12 +289,13 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
         key: ann.nodePubKey,
         encodingScheme: scheme,
         timestamp: ann.timestamp,
+        ipv6: ann.nodeIp,
         announcement: ann
     });
     if (node) {
         if (node.mut.timestamp > ann.timestamp) {
             console.log("old announcement, drop");
-            return { stateHash: nodeAnnouncementHash(node), debug: replyError };
+            return { stateHash: nodeAnnouncementHash(node), error: replyError };
         } else if (node.version !== nodex.version) {
             console.log("version change, replacing node");
             node = addNode(ctx, nodex, true);
@@ -313,6 +317,7 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
     peersFromAnnouncement(ann).forEach((peer) => {
         const ipv6 = peer.ipv6;
         peersIp6.push(ipv6);
+        if (!node) { throw new Error(); }
         if (peer.label === '0000.0000.0000.0000' && node.inwardLinksByIp[ipv6]) {
             delete node.inwardLinksByIp[ipv6];
             ctx.mut.dijkstra = undefined;
@@ -331,7 +336,14 @@ const handleAnnounce = (ctx, annBin, fromNode, fromDb) => {
 
     if (peersIp6.length) {
         if (!fromDb) {
-            ctx.db.addMessage(ann.nodeIp, annHash, ann.timestamp, annBin, peersIp6);
+            ctx.db.addMessage(
+                ann.nodeIp,
+                annHash,
+                Number('0x'+ann.timestamp),
+                annBin,
+                peersIp6,
+                () => {}
+            );
         }
         ctx.peer.addAnn(annHash, ann.binary);
     }
@@ -370,10 +382,14 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
         cjdnslink.send(msg);
     } else if (msg.contentBenc.sq.toString('utf8') === 'ann') {
         const reply = handleAnnounce(ctx, msg.contentBenc.ann, true, false);
-        reply.txid = msg.contentBenc.txid;
-        reply.p = ctx.mut.selfNode.version;
-        reply.recvTime = +new Date();
-        msg.contentBenc = reply;
+        if (!ctx.mut.selfNode) { throw new Error(); }
+        msg.contentBenc = {
+            txid: msg.contentBenc.txid,
+            p: ctx.mut.selfNode.version,
+            recvTime: +new Date(),
+            stateHash: reply.stateHash,
+            error: reply.error
+        };
         console.log("reply: " + reply.stateHash.toString('hex'));
         cjdnslink.send(msg);
     } else if (msg.contentBenc.sq.toString('utf8') === 'pn') {
@@ -484,7 +500,7 @@ const testSrv = (ctx) => {
                 }
             }
             out.push.apply(out, outLinks);
-            res.end(out.map(JSON.stringify).join('\n'));
+            res.end(out.map((x)=>JSON.stringify(x)).join('\n'));
         } else {
             //console.log(req.url);
             res.end(req.url);
@@ -531,7 +547,8 @@ const loadDb = (ctx, cb) => {
 
 const main = () => {
     const confIdx = process.argv.indexOf('--config');
-    const config = require( (confIdx > -1) ? process.argv[confIdx+1] : './config' );
+    // $FlowFixMe require literal...
+    const config /*:ConfigType*/ = require((confIdx > -1) ? process.argv[confIdx+1] : './config');
 
     let ctx = Object.freeze({
         //nodesByKey: {},

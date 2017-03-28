@@ -1,12 +1,14 @@
+/*@flow*/
 const nThen = require('nthen');
 const Pg = require('pg');
 const Database = require('./database');
+/*::const ConfigType = require('./config.example.js');*/
 
 const ANN = [
     "fc22:5cda:a8ca:22c4:cccd:d188:ae5e:76ed",
     "e6e51e3d5ccac09157e57af90ba1a7d3424087f82dd9d68e7b943989eaac6e41" +
     "e6edf1c611d69d98fb8164f5036548b09e69f8ccc12d8a3ffadd566cc2993388",
-    "15b0afbc269",
+    Number("0x15b0afbc269"),
     new Buffer(
         '155307319ad0974808563cdb5f0220726191df02d482dfc60f9b800f1bba7330' +
         '4dda4080cce9a0149bb5af30a186d39f7e1c16edc2e8be62e1e0b20b257e5706' +
@@ -25,7 +27,8 @@ const ANN = [
 
 const main = () => {
     const confIdx = process.argv.indexOf('--config');
-    const config = require( (confIdx > -1) ? process.argv[confIdx+1] : './config' );
+    // $FlowFixMe require literal...
+    const config /*:ConfigType*/ = require( (confIdx > -1) ? process.argv[confIdx+1] : './config' );
     const db = Database.create(config);
     nThen((waitFor) => {
         let empty = true;
@@ -62,7 +65,7 @@ const main = () => {
     }).nThen((waitFor) => {
         db.addMessage(ANN[0], ANN[1], ANN[2], ANN[3], ANN[4], waitFor());
     }).nThen((waitFor) => {
-        db.garbageCollect('1490537923178', waitFor());
+        db.garbageCollect(1490537923178, waitFor());
     }).nThen((waitFor) => {
         db.getMessageHashes((h) => { throw new Error(); }, waitFor());
     }).nThen((waitFor) => {

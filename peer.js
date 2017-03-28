@@ -1,6 +1,8 @@
+/* @flow */
 const WebSocket = require('ws');
 const Msgpack = require('msgpack5');
 const nThen = require('nthen');
+/*::const Http = require('http');*///flow
 
 const NOFUNC = ()=>{};
 
@@ -126,7 +128,7 @@ const incoming = (ctx, socket) => {
         return;
     }
     const peer = mkPeer(ctx, socket, false);
-    console.log("Incoming connection " + peer.addr);
+    console.log("Incoming connection");
     sendPeerMsg(ctx, peer, [0, 'HELLO', ctx.version]);
     ctx.peers.push(peer);
     const hashes = Object.keys(ctx.annByHash).map((x) => (new Buffer(x, 'hex')));
@@ -218,10 +220,10 @@ const create = module.exports.create = () => {
     ctx.mut.pingCycle = setInterval(() => { pingCycle(ctx); }, PING_CYCLE_MS);
 
     return {
-        connectTo: (url) => { connectTo(ctx, url); },
-        addAnn: (hash, binary) => { addAnn(ctx, hash, binary); },
-        deleteAnn: (hash) => { delete ctx.annByHash[hash]; },
-        runServer: (httpServer) => { runServer(ctx, httpServer); },
-        onAnnounce: (handler) => { ctx.mut.onAnnounce = handler; }
+        connectTo: (url /*:string*/) => { connectTo(ctx, url); },
+        addAnn: (hash /*:string*/, binary /*:Buffer*/) => { addAnn(ctx, hash, binary); },
+        deleteAnn: (hash /*:string*/) => { delete ctx.annByHash[hash]; },
+        runServer: (httpServer /*:Http.Server*/) => { runServer(ctx, httpServer); },
+        onAnnounce: (handler /*:function*/) => { ctx.mut.onAnnounce = handler; }
     };
 };
