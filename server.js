@@ -27,7 +27,6 @@ const Http = require('http');
 
 const Database = require('./database');
 const Peer = require('./peer');
-/*::const ConfigType = require('./config.example.js');*/
 
 /*::
 type WaitFor = (...Array<any>)=>(...Array<any>)=>void;
@@ -545,11 +544,16 @@ const loadDb = (ctx, cb) => {
     }).nThen(cb);
 };
 
-const main = () => {
+const getConfig = () => {
     const confIdx = process.argv.indexOf('--config');
-    // $FlowFixMe require literal...
-    const config /*:ConfigType*/ = require((confIdx > -1) ? process.argv[confIdx+1] : './config');
+    /*::const ConfigType = require('./config.example.js');*/
+    return (require /*:(any)=>typeof(ConfigType)*/)(
+        (confIdx > -1) ? process.argv[confIdx+1] : './config'
+    );
+};
 
+const main = () => {
+    const config = getConfig();
     let ctx = Object.freeze({
         //nodesByKey: {},
         //ipnodes: {},

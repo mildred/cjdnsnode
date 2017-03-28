@@ -14,7 +14,6 @@
  */
 'use strict';
 const Pg = require('pg');
-/*::const ConfigType = require('./config.example.js');*/
 
 const NOFUNC = ()=>{};
 
@@ -61,7 +60,8 @@ const getAllMessages = (ctx, msgCb, doneCb) => {
     q.on('end', doneCb);
 };
 
-module.exports.create = (config /*:ConfigType*/) => {
+/*::const ConfigType = require('./config.example.js');*/
+module.exports.create = (config /*:typeof(ConfigType)*/) => {
     config.postgres = config.postgres || {};
     config.postgres.user = config.postgres.user || 'cjdnsnode_user';
     config.postgres.database = config.postgres.database || 'cjdnsnode';

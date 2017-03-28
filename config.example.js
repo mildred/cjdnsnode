@@ -1,3 +1,4 @@
+/*@flow*/
 module.exports = {
     postgres: {
         user: 'cjdnsnode_user',
