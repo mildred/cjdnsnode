@@ -17,6 +17,7 @@ const Fs = require('fs');
 const Net = require('net');
 const Udp = require('dgram');
 const Crypto = require('crypto');
+const nThen = require('nthen');
 const Dijkstra = require('node-dijkstra');
 const Cjdnsplice = require('cjdnsplice');
 const Cjdnskeys = require('cjdnskeys');
@@ -28,11 +29,6 @@ const Http = require('http');
 const Database = require('./database');
 const Peer = require('./peer');
 
-/*::
-type WaitFor = (...Array<any>)=>(...Array<any>)=>void;
-type Nthen = ((WaitFor)=>void)=>Nthen;
-*/
-const nThen /*:Nthen*/ = require('nthen');
 
 const MS_MINUTE = 1000 * 60;
 const KEEP_TABLE_CLEAN_CYCLE = 4 * 60 * MS_MINUTE;
@@ -409,6 +405,7 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
     }
 };
 
+/*::import type { Cjdnsniff_BencMsg_t } from 'cjdnsniff'*/
 const service = (ctx) => {
     let cjdns;
     nThen((waitFor) => {
@@ -437,6 +434,7 @@ const service = (ctx) => {
                 console.error(e.stack);
             });
             cjdnslink.on('message', (msg) => {
+                /*::msg = (msg:Cjdnsniff_BencMsg_t);*/
                 onSubnodeMessage(ctx, msg, cjdnslink);
             });
         }));
