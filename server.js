@@ -374,6 +374,7 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
             console.log(logMsg + "not found");
         }
         msg.contentBenc.recvTime = now();
+        msg.routeHeader.switchHeader.labelShift = 0;
 
         delete msg.contentBenc.sq;
         delete msg.contentBenc.src;
@@ -389,6 +390,7 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
             stateHash: reply.stateHash,
             error: reply.error
         };
+        msg.routeHeader.switchHeader.labelShift = 0;
         console.log("reply: " + reply.stateHash.toString('hex'));
         cjdnslink.send(msg);
     } else if (msg.contentBenc.sq.toString('utf8') === 'pn') {
@@ -400,6 +402,7 @@ const onSubnodeMessage = (ctx, msg, cjdnslink) => {
                 msg.contentBenc.stateHash = n.mut.stateHash;
             }
         }
+        msg.routeHeader.switchHeader.labelShift = 0;
         delete msg.contentBenc.sq;
         delete msg.contentBenc.src;
         delete msg.contentBenc.tar;
