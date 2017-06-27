@@ -131,16 +131,16 @@ const nodeAnnouncementHash = (node) => {
 };
 
 const peersFromAnnouncement = (ann) => {
-    return ann.entities.filter((x) => (x.type === 'Peer'));
+    return (ann.entities.filter((x) => (x.type === 'Peer')) /*:Array<any>*/ );
 };
 
 const encodingSchemeFromAnnouncement = (ann) => {
-    const scheme = ann.entities.filter((x) => (x.type === 'EncodingScheme'))[0];
+    const scheme /*:any*/ = ann.entities.filter((x) => (x.type === 'EncodingScheme'))[0];
     return scheme ? scheme.scheme : undefined;
 };
 
 const versionFromAnnouncement = (ann) => {
-    const ver = ann.entities.filter((x) => (x.type === 'Version'))[0];
+    const ver /*:any*/ = ann.entities.filter((x) => (x.type === 'Version'))[0];
     return ver ? ver.version : undefined;
 };
 
