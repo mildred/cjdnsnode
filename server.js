@@ -65,6 +65,7 @@ const getRoute = (ctx, src, dst) => {
     }
 
     if (!ctx.mut.dijkstra) {
+        ctx.mut.routeCache = {};
         const dijkstra = ctx.mut.dijkstra = new Dijkstra();
         for (const nip in ctx.nodesByIp) {
             const links = ctx.nodesByIp[nip].inwardLinksByIp;
@@ -74,10 +75,17 @@ const getRoute = (ctx, src, dst) => {
         }
     }
 
+    const cachedEntry = ctx.mut.routeCache[dst.ipv6 + '|' + src.ipv6];
+    if (typeof(cachedEntry) !== 'undefined') {
+        return cachedEntry;
+    }
+
     // we ask for the path in reverse because we build the graph in reverse.
     // because nodes announce own their reachability instead of announcing reachability of others.
     const path = ctx.mut.dijkstra.path(dst.ipv6, src.ipv6);
-    if (!path) { return; }
+    if (!path) {
+        return ctx.mut.routeCache[dst.ipv6 + '|' + src.ipv6] = null;
+    }
     path.reverse();
     let last;
     let lastLink;
@@ -107,7 +115,7 @@ const getRoute = (ctx, src, dst) => {
     });
     labels.unshift('0000.0000.0000.0001');
     const spliced = Cjdnsplice.splice.apply(null, labels);
-    return { label: spliced, hops: hops, path:path };
+    return ctx.mut.routeCache[dst.ipv6 + '|' + src.ipv6] = { label: spliced, hops: hops, path:path };
 };
 
 const nodeAnnouncementHash = (node) => {
@@ -568,7 +576,8 @@ const main = () => {
 
         mut: {
             dijkstra: undefined,
-            selfNode: undefined
+            selfNode: undefined,
+            routeCache: {}
         }
     });
 
